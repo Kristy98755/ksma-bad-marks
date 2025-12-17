@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <title>Пропуски и отработки</title>
+<style>
+  :root {
+    --bg: #0b0f1a;
+    --panel: #12182a;
+    --panel-soft: #181f3a;
+    --text: #e8ebf1;
+    --muted: #9aa4c7;
+    --accent: linear-gradient(135deg, #7f5cff, #00d4ff);
+    --danger: #ff4d4d;
+    --warn: #ffb020;
+  }
+
+  * {
+    box-sizing: border-box;
+  }
+
+  body {
+    margin: 0;
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    background: radial-gradient(1200px 600px at 10% -10%, #1a2040, transparent),
+                radial-gradient(1000px 500px at 90% 10%, #10203d, transparent),
+                var(--bg);
+    color: var(--text);
+  }
+
+  .app {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 20px;
+  }
+
+  /* ---------- Header ---------- */
+
+  .header {
+    background: var(--accent);
+    border-radius: 20px;
+    padding: 24px;
+    box-shadow: 0 20px 50px rgba(0,0,0,.4);
+    margin-bottom: 24px;
+  }
+
+  .header h1 {
+    margin: 0;
+    font-size: 26px;
+    font-weight: 700;
+  }
+
+  .header p {
+    margin: 6px 0 0;
+    opacity: .9;
+  }
+
+  /* ---------- Controls ---------- */
+
+  .controls {
+    background: linear-gradient(180deg, var(--panel), var(--panel-soft));
+    border-radius: 18px;
+    padding: 20px;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.04),
+                0 15px 40px rgba(0,0,0,.35);
+    display: grid;
+    grid-template-columns: 1fr 1fr auto;
+    gap: 16px;
+    align-items: end;
+    margin-bottom: 28px;
+  }
+
+  .field label {
+    display: block;
+    font-size: 13px;
+    color: var(--muted);
+    margin-bottom: 6px;
+  }
+
+  input, select {
+    width: 100%;
+    padding: 12px 14px;
+    border-radius: 12px;
+    border: none;
+    background: #0e1430;
+    color: var(--text);
+    font-size: 15px;
+    box-shadow: inset 0 0 0 1px rgba(255,255,255,.06);
+  }
+
+  input:focus, select:focus {
+    outline: none;
+    box-shadow: 0 0 0 2px rgba(127,92,255,.5);
+  }
+
+  button {
+    padding: 12px 22px;
+    border-radius: 14px;
+    border: none;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+    background: var(--accent);
+    color: #fff;
+    box-shadow: 0 10px 30px rgba(0,0,0,.4);
+    transition: transform .15s ease, box-shadow .15s ease;
+  }
+
+  button:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 14px 40px rgba(0,0,0,.55);
+  }
+
+  /* ---------- Cards ---------- */
+
+  #result {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 18px;
+  }
+
+  .card {
+    position: relative;
+    padding: 18px 18px 20px;
+    border-radius: 18px;
+    background:
+      linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,0)),
+      linear-gradient(135deg, #1b2355, #10163a);
+    box-shadow:
+      inset 0 1px 0 rgba(255,255,255,.08),
+      0 18px 50px rgba(0,0,0,.45);
+    overflow: hidden;
+  }
+
+  .card::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(600px 200px at -20% -20%, rgba(127,92,255,.25), transparent);
+    pointer-events: none;
+  }
+
+  .card div {
+    margin-bottom: 8px;
+    line-height: 1.4;
+  }
+
+  .card b {
+    color: var(--muted);
+    font-weight: 600;
+  }
+
+  /* ---------- Marks ---------- */
+
+  .mark {
+    <!-- font-size: 16px; -->
+    font-style: bold;
+  }
+
+  .mark.bad {
+    color: var(--danger);
+    text-shadow: 0 0 12px rgba(255,77,77,.6);
+  }
+
+  .mark.warn {
+    color: var(--warn);
+    text-shadow: 0 0 12px rgba(255,176,32,.6);
+  }
+
+  /* ---------- Mobile ---------- */
+
+  @media (max-width: 720px) {
+    .controls {
+      grid-template-columns: 1fr;
+    }
+  }
+  
+  .summary {
+  margin-bottom: 18px;
+  padding: 14px 18px;
+  border-radius: 14px;
+  background: linear-gradient(135deg, #2a1b1b, #1a0f0f);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.05),
+              0 12px 35px rgba(0,0,0,.45);
+  font-size: 18px;
+  font-weight: 700;
+  color: #ff6b6b;
+  display: none;
+}
+
+</style>
+
+
+</head>
+<body>
+  <div class="app">
+
+    <header class="header">
+      <h1>Пропуски и ортаботки</h1>
+      <p>Автор инструмента:<br>©Kanami-isa, 2025</p>
+	  <p>Права на хранение и обработку данных принадлежат исключительно <a href="avn.kg">avn.kg</a>.</p>
+    </header>
+
+    <section class="controls">
+      <div class="field">
+        <label>&nbsp;&nbsp;&nbsp;Выберите полугодие:
+        <select id="ws">
+          <option value="2">Осеннее</option>
+          <option value="1">Весеннее</option>
+        </select>
+		</label>
+      </div>
+	  <div class="field">
+        <label>&nbsp;&nbsp;&nbsp;Введите свой логин от АВН:
+        <input id="login">
+		</label>
+      </div>
+      <button id="load">Проверить долги!</button>
+    </section>
+	<hr>
+	<div id="summary" class="summary"></div>
+    <section id="result"></section>
+
+  </div>
+
+
+
+<script>
+const BASE = "https://lms.kgma.kg/vm/api";
+const BAD_MARKS = ["1", "2", "д", "нб"];
+const ID_YEAR = 25;
+
+const resultBody = document.getElementById("result");
+// Предположим, твоя кнопка запускает функцию loadData()
+const loginInput = document.getElementById("login");
+const loadButton = document.getElementById("load");
+
+loginInput.addEventListener("keydown", function(e) {
+  if (e.key === "Enter") {
+    e.preventDefault();  // чтобы не было нежелательного submit
+    loadButton.click();  // вызывает клик по кнопке
+  }
+});
+
+function isBadLesson(lesson, vidType) {
+  const mark = String(lesson.otsenka_ball);
+  const status = String(lesson.otsenka || "").toLowerCase();
+
+  if (vidType === "Лекционный") {
+    // Для лекций учитываем только "д" и "нб"
+    return status === "д" || status === "нб";
+  } else {
+    // Для практики учитываем 1, 2, д, нб
+    return mark === "1" || mark === "2" || status === "д" || status === "нб";
+  }
+}
+
+
+
+async function fetchJSON(url) {
+  const res = await fetch(url);
+  const json = await res.json();
+  return json.data || [];
+}
+
+document.getElementById("load").onclick = async () => {
+  resultBody.innerHTML = "";
+  let tailsCount = 0;
+
+	const summary = document.getElementById("summary");
+	summary.style.display = "none";
+	summary.textContent = "";
+
+  const login = document.getElementById("login").value.trim();
+  const id_ws = document.getElementById("ws").value;
+
+  if (!login.includes("-")) {
+    alert("Логин должен быть в формате X-YYYYY");
+    return;
+  }
+
+  const id_student = login.split("-")[1];
+
+  try {
+    // 1. Получаем группу
+    const user = await fetchJSON(
+      `${BASE}/user?id_user=${id_student}&id_avn=-1&id_role=2`
+    );
+    const id_group = user.id_group;
+
+    // 2. Получаем семестр
+    const semesterData = await fetchJSON(
+      `${BASE}/student/semester/?id_year=${ID_YEAR}&id_ws=${id_ws}&id_group=${id_group}&id_student=${id_student}`
+    );
+    const id_semester = semesterData[0].id_semester;
+
+    // 3. Получаем дисциплины
+    const disciplines = await fetchJSON(
+      `${BASE}/student/discipline/?id_year=${ID_YEAR}&id_ws=${id_ws}&id_group=${id_group}&id_student=${id_student}&id_semester=${id_semester}`
+    );
+
+    for (const disc of disciplines) {
+      // 4. Типы занятий
+      const vids = await fetchJSON(
+        `${BASE}/student/vid-zanyatie?id_year=${ID_YEAR}&id_ws=${id_ws}&id_group=${id_group}&id_student=${id_student}&id_semester=${id_semester}&id_discipline=${disc.id_discipline}`
+      );
+
+      for (const vid of vids) {
+        // 5. Преподаватели
+        const teachers = await fetchJSON(
+          `${BASE}/student/teacher/?id_year=${ID_YEAR}&id_ws=${id_ws}&id_group=${id_group}&id_student=${id_student}&id_discipline=${disc.id_discipline}&id_semester=${id_semester}&id_vid_zaniatiy=${vid.id_vid_zaniatiy}`
+        );
+
+        for (const teacher of teachers) {
+          // 6. Журнал
+          const journal = await fetchJSON(
+            `${BASE}/student/journal?id_year=${ID_YEAR}&id_ws=${id_ws}&id_group=${id_group}&id_student=${id_student}&id_discipline=${disc.id_discipline}&id_vid_zaniatiy=${vid.id_vid_zaniatiy}&id_semester=${id_semester}&id_teacher=${teacher.id_teacher}`
+          );
+		  const lessonCounter = {}; // { "273370-1": 0, "273370-2": 0 }
+
+          for (const lesson of journal) {
+		    const key = `${disc.id_discipline}-${vid.id_vid_zaniatiy}`;
+			if (!lessonCounter[key]) lessonCounter[key] = 1;
+			else lessonCounter[key]++;
+
+			const lessonNumber = lessonCounter[key]; // <- вот правильный номер
+
+            if (isBadLesson(lesson, vid.vid_zaniatiy)) {
+				tailsCount++;
+			  	const card = document.createElement("div");
+				card.className = "card";
+				const displayMark =
+				  lesson.otsenka && lesson.otsenka !== ""
+					? lesson.otsenka
+					: lesson.otsenka_ball;
+
+				const markClass =
+				  displayMark === "1" || displayMark === "2"
+					? "bad"
+					: "warn";
+
+
+				card.innerHTML = `
+				  <div><b>Предмет:</b> ${disc.discipline}</div>
+				  <div><b>Дата:</b> ${lesson.visitDate}</div>
+				  <div><b>Тема:</b> №${lessonNumber} – ${lesson.lesson_topic?.trim() || ""}</div>
+				  <div>
+					<b>Отметка:	<span class="mark ${markClass}">${displayMark}</span></b>
+				  </div>
+				`;
+
+
+
+				resultBody.appendChild(card);
+
+            }
+          }
+        }
+      }
+    }
+	function tailsWord(n) {
+	  if (n % 10 === 1 && n % 100 !== 11) return "хвост";
+	  if ([2,3,4].includes(n % 10) && ![12,13,14].includes(n % 100)) return "хвоста";
+	  return "хвостов";
+	}
+
+	summary.textContent = `У вас ${tailsCount} ${tailsWord(tailsCount)}!`;
+	summary.style.display = "block";
+
+  } catch (e) {
+    console.error(e);
+    alert("Ошибка при загрузке данных. См. консоль.");
+  }
+};
+</script>
+
+</body>
+</html>
