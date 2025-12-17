@@ -340,15 +340,22 @@ document.getElementById("load").onclick = async () => {
 					? "bad"
 					: "warn";
 
+				let tipZan = ""; // объявляем снаружи
+				if (vid.vid_zaniatiy === "Практический") {
+					tipZan = "(практ.)";
+				} else if (vid.vid_zaniatiy === "Лекционный") {
+					tipZan = "(лекц.)";
+				}
 
 				card.innerHTML = `
-				  <div><b>Предмет:</b> ${disc.discipline}</div>
+				  <div><b>Предмет:</b> ${disc.discipline} ${tipZan}</div>
 				  <div><b>Дата:</b> ${lesson.visitDate}</div>
 				  <div><b>Тема:</b> №${lessonNumber} – ${lesson.lesson_topic?.trim() || ""}</div>
 				  <div>
-					<b>Отметка:	<span class="mark ${markClass}">${displayMark}</span></b>
+					<b>Отметка: <span class="mark ${markClass}">${displayMark}</span></b>
 				  </div>
 				`;
+
 
 
 
