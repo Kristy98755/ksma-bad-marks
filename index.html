@@ -246,7 +246,10 @@ loginInput.addEventListener("keydown", function(e) {
 function isBadLesson(lesson, vidType) {
   const mark = String(lesson.otsenka_ball);
   const status = String(lesson.otsenka || "").toLowerCase();
+  const attempt = lesson.attempt;
 
+  // Если попытка 2 или 3 — считаем, что неудовлетворительная уже отработана, игнорируем
+  if (attempt === 2 || attempt === 3) return false;
   if (vidType === "Лекционный") {
     // Для лекций учитываем только "д" и "нб"
     return status === "д" || status === "нб";
