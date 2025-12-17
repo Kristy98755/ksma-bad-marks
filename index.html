@@ -2,6 +2,7 @@
 <html lang="ru">
 <head>
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Пропуски и отработки</title>
 <style>
   :root {
@@ -26,6 +27,7 @@
                 radial-gradient(1000px 500px at 90% 10%, #10203d, transparent),
                 var(--bg);
     color: var(--text);
+	min-height: 100vh;
   }
 
   .app {
@@ -217,7 +219,6 @@
       </div>
       <button id="load">Проверить долги!</button>
     </section>
-	<hr>
 	<div id="summary" class="summary"></div>
     <section id="result"></section>
 
@@ -376,4 +377,3 @@ document.getElementById("load").onclick = async () => {
 
 </body>
 </html>
-
