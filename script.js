@@ -1,5 +1,5 @@
 const BASE = "https://lms.kgma.kg/vm/api";
-const BAD_MARKS = ["1", "2", "д", "нб"];
+// const BAD_MARKS = ["1", "2", "д", "нб"];
 const ID_YEAR = 25;
 let cleanDisc;
 const resultBody = document.getElementById("result");
@@ -168,11 +168,23 @@ async function mainscript() {
 	  if ([2,3,4].includes(n % 10) && ![12,13,14].includes(n % 100)) return "хвоста";
 	  return "хвостов";
 	}
+	window.tailsWord = tailsWord;
+	summary.textContent = tailsCount === 0
+    ? "Поздравляем, у вас нет хвостов!"
+    : `У вас ${tailsCount} ${tailsWord(tailsCount)}!`;
 
-	summary.textContent = `У вас ${tailsCount} ${tailsWord(tailsCount)}!`;
-	summary.style.display = "block";
-	resultBody.style.display = "block";
-
+// Задаём цвет/градиент
+	summary.style.background = tailsCount === 0
+		? "linear-gradient(135deg, #009933, #00ff6a)"
+		// зелёный градиент
+		: "linear-gradient(135deg, #2a1b1b, #1a0f0f)";
+		// прежний градиент
+		summary.style.display = "block";
+		resultBody.style.display = "block";
+	summary.style.color = tailsCount === 0 ? "#fff" : "#ff6b6b";
+	if (tailsCount === 0){
+		launchConfetti();
+	};
   } catch (e) {
     console.error(e);
     alert("Ошибка при загрузке данных. См. консоль.");
@@ -235,3 +247,33 @@ function logTerminal(text) {
   // автоскролл вниз
   terminal.scrollTop = terminal.scrollHeight;
 }
+
+
+function launchConfetti(){
+	const end = Date.now() + 2 * 1000;
+
+// go Buckeyes!
+let colors;
+
+(function frame() {
+  confetti({
+    particleCount: 2,
+    angle: 60,
+    spread: 55,
+    origin: { x: 0 },
+    colors: colors,
+  });
+
+  confetti({
+    particleCount: 2,
+    angle: 120,
+    spread: 55,
+    origin: { x: 1 },
+    colors: colors,
+  });
+
+  if (Date.now() < end) {
+    requestAnimationFrame(frame);
+  }
+})();
+};
