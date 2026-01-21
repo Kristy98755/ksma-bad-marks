@@ -27,11 +27,11 @@ function isBadLesson(lesson, vidType) {
 	// Если попытка 2 или 3 — считаем, что неудовлетворительная уже отработана, игнорируем
 	if (attempt === 2 || attempt === 3) return false;
 	if (vidType === "Лекционный") {
-		// Для лекций учитываем только "д" и "нб"
-		return status === "д" || status === "нб";
+		// Для лекций учитываем только "д" и "н/б"
+		return status === "д" || status === "н/б";
 	} else {
-		// Для практики учитываем 1, 2, д, нб
-		return mark === "1" || mark === "2" || status === "д" || status === "нб";
+		// Для практики учитываем 1, 2, д, н/б
+		return mark === "1" || mark === "2" || status === "д" || status === "н/б";
 	}
 }
 
@@ -97,7 +97,7 @@ async function mainscript() {
         const card = document.createElement("div");
         card.className = "card";
         const displayMark = mark && mark !== "" ? mark : "—";
-        const markClass = (displayMark === "1" || displayMark === "2" || displayMark === "нб" || displayMark === "д") ? "bad" : "warn";
+        const markClass = (displayMark === "1" || displayMark === "2" || displayMark === "н/б" || displayMark === "д") ? "bad" : "warn";
         
         let tipZan = "";
         if (type === "Практический") tipZan = "(практ.)";
@@ -176,12 +176,11 @@ async function mainscript() {
 		if (e.message === "LMS_SSL_FAILURE" || e.message.includes("fetch")) {
 			logTerminal("Ошибка рукопожатия SSL!");
 			logTerminal("Перенаправление трафика на защищенный прокси-сервер...");
-			
+			logTerminal("Соединение с Vercel установлено успешно!");
+			logTerminal("Ожидание данных от прокси-сервера...");
 			try {
 				const res = await fetch(`${FALLBACK_BASE}/run?login=${login}&id_ws=${id_ws}`);
 				if (!res.ok) throw new Error("Не удалось установить защищенное соединение.");
-				logTerminal("Соединение с Vercel установлено успешно!");
-				logTerminal("Ожидание данных от прокси-сервера...");
 
 				const json = await res.json();
 				
