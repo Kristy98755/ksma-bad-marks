@@ -1,4 +1,5 @@
-const BASE = "https://ksma-bad-marks.vercel.app/api/proxy";
+const BASE = "https://lms.kgma.kg/vm/api/";
+const FALLBACK_BASE = "https://ksma-bad-marks.vercel.app/api/proxy";
 
 
 const ID_YEAR = 25;
