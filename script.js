@@ -1,5 +1,6 @@
-const BASE = "https://lms.kgma.kg/vm/api";
-// const BAD_MARKS = ["1", "2", "д", "нб"];
+const RAW_BASE = "https://lms.kgma.kg/vm/api";
+const BASE = `/api/proxy?url=${encodeURIComponent(RAW_BASE)}`;
+
 const ID_YEAR = 25;
 let cleanDisc;
 const resultBody = document.getElementById("result");
@@ -35,42 +36,10 @@ function isBadLesson(lesson, vidType) {
 
 
 
-function fetchJSON(url) {
-	return new Promise((resolve, reject) => {
-		const xhr = new XMLHttpRequest();
-
-		xhr.open("GET", url, true);
-		xhr.responseType = "json";
-
-		xhr.onload = function () {
-			// status === 0 сюда НЕ должен попадать
-			if (xhr.status >= 200 && xhr.status < 300) {
-				const json = xhr.response || (
-					xhr.responseText ? JSON.parse(xhr.responseText) : null
-				);
-				resolve(json?.data || []);
-			} else {
-				reject(new Error(`HTTP ${xhr.status}`));
-			}
-		};
-
-		xhr.onerror = function () {
-			// именно тут MTK и падает
-			reject(new Error("Network error (MTK / WebView)"));
-		};
-
-		xhr.ontimeout = function () {
-			reject(new Error("Request timeout"));
-		};
-
-		xhr.timeout = 15000; // важно: иначе зависнет навсегда
-
-		try {
-			xhr.send(null);
-		} catch (e) {
-			reject(e);
-		}
-	});
+async function fetchJSON(url) {
+	const res = await fetch(url);
+	const json = await res.json();
+	return json.data || [];
 }
 
 
