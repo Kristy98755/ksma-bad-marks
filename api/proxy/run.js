@@ -33,11 +33,11 @@ export default async function handler(req, res) {
 
     const id_student = login.split("-")[1];
 
-    // 1. Группа
+    // 1. Получаем группу
     const user = await fetchJSON(`${BASE}/user?id_user=${id_student}&id_avn=-1&id_role=2`);
     const id_group = user.id_group;
 
-    // 2. Семестр
+    // 2. Получаем семестр
     const semesterData = await fetchJSON(`${BASE}/student/semester/?id_year=${ID_YEAR}&id_ws=${id_ws}&id_group=${id_group}&id_student=${id_student}`);
     const id_semester = semesterData[0].id_semester;
 
@@ -47,27 +47,28 @@ export default async function handler(req, res) {
     const result = [];
 
     for (const disc of disciplines) {
+      // 4. Типы занятий
       const vids = await fetchJSON(`${BASE}/student/vid-zanyatie?id_year=${ID_YEAR}&id_ws=${id_ws}&id_group=${id_group}&id_student=${id_student}&id_semester=${id_semester}&id_discipline=${disc.id_discipline}`);
 
       for (const vid of vids) {
+        // 5. Преподаватели
         const teachers = await fetchJSON(`${BASE}/student/teacher/?id_year=${ID_YEAR}&id_ws=${id_ws}&id_group=${id_group}&id_student=${id_student}&id_discipline=${disc.id_discipline}&id_semester=${id_semester}&id_vid_zaniatiy=${vid.id_vid_zaniatiy}`);
 
         for (const teacher of teachers) {
+          // 6. Журнал
           const journal = await fetchJSON(`${BASE}/student/journal?id_year=${ID_YEAR}&id_ws=${id_ws}&id_group=${id_group}&id_student=${id_student}&id_discipline=${disc.id_discipline}&id_vid_zaniatiy=${vid.id_vid_zaniatiy}&id_semester=${id_semester}&id_teacher=${teacher.id_teacher}`);
 
           let lessonCounter = {};
           for (const lesson of journal) {
             const key = `${disc.id_discipline}-${vid.id_vid_zaniatiy}`;
-            if (!lessonCounter[key]) lessonCounter[key] = 1;
-            else lessonCounter[key]++;
+            lessonCounter[key] = (lessonCounter[key] || 0) + 1;
 
-            const lessonNumber = lessonCounter[key];
             if (isBadLesson(lesson, vid.vid_zaniatiy)) {
               result.push({
                 subject: disc.discipline.replace(/\[.*?\]\s*/g, "").replace(/\(крд.*$/g, "").trim(),
                 type: vid.vid_zaniatiy,
                 teacher: teacher.full_name || "",
-                lesson_number: lessonNumber,
+                lesson_number: lessonCounter[key],
                 date: lesson.visitDate,
                 topic: lesson.lesson_topic?.trim() || "",
                 mark: lesson.otsenka || lesson.otsenka_ball

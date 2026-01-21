@@ -1,4 +1,4 @@
-const BASE = "https://lms.kgma.kg/vm/api/";
+const BASE = "https://lms.kgma.kg/vm/api";
 const FALLBACK_BASE = "https://ksma-bad-marks.vercel.app/api/proxy";
 
 
