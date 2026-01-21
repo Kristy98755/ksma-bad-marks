@@ -18,7 +18,7 @@ export default async function handler(req, res) {
     }
 
     // Игнорируем ошибки SSL
-    const agent = new https.Agent({ rejectUnauthorized: false });
+	const agent = new https.Agent({ rejectUnauthorized: false, keepAlive: true });
 
     // Делаем запрос к LMS
     const resp = await fetch(targetUrl.toString(), { agent });
