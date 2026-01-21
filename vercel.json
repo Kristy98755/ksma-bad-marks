@@ -16,8 +16,8 @@
       "dest": "api/proxy/[...path].js"
     },
     {
-      "src": "/api/proxy/run",
-      "dest": "api/proxy/run.js"
+      "src": "/api/proxy/api",
+      "dest": "api/proxy/api.js"
     }
   ]
 }
