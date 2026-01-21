@@ -119,6 +119,7 @@ async function mainscript() {
 		
 		// Пытаемся идти по обычному дереву
 		console.log("Попытка прямого соединения с LMS...");
+		logTerminal("Попытка прямого соединения с LMS...");
 		const id_student = login.split("-")[1];
 		const user = await fetchJSON(`${BASE}/user?id_user=${id_student}&id_avn=-1&id_role=2`);
 		const id_group = user.id_group;
@@ -172,11 +173,15 @@ async function mainscript() {
     } catch (e) {
 		// Если поймали нашу спец-ошибку или любой сетевой сбой
 		if (e.message === "LMS_SSL_FAILURE" || e.message.includes("fetch")) {
-			logTerminal("SSL Error! Переключаюсь на Vercel...");
+			logTerminal("Ошибка рукопожатия SSL!");
+			logTerminal("Перенаправление трафика на защищенный туннель...");
 			
 			try {
 				const res = await fetch(`${FALLBACK_BASE}/run?login=${login}&id_ws=${id_ws}`);
-				if (!res.ok) throw new Error("Vercel тоже недоступен");
+				if (!res.ok) throw new Error("Не удалось установить защищенное соединение.");
+				logTerminal("Соединение с Vercel установлено успешно!");
+				logTerminal("Ожидание данных от прокси-сервера...");
+
 				const json = await res.json();
 				
 				json.data.forEach(item => {
