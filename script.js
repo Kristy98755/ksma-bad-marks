@@ -71,165 +71,135 @@ document.getElementById("load").onclick = async() => {
 
 	};
 };
+// ... (оставляем BASE, FALLBACK_BASE, ID_YEAR и обработчики куки в начале файла)
+
 async function mainscript() {
-		const loader = document.getElementById("loader");
-		loader.style.display = "block";			 // показываем анимацию
-	
-		resultBody.innerHTML = "";
-		let tailsCount = 0;
+    const loader = document.getElementById("loader");
+    const summary = document.getElementById("summary");
+    const resultBody = document.getElementById("result");
+    const login = document.getElementById("login").value.trim();
+    const id_ws = document.getElementById("ws").value;
 
-	const summary = document.getElementById("summary");
-	summary.style.display = "none";
-	summary.textContent = "";
+    loader.style.display = "block";
+    resultBody.innerHTML = "";
+    summary.style.display = "none";
+    let tailsCount = 0;
 
-	const login = document.getElementById("login").value.trim();
-	const id_ws = document.getElementById("ws").value;
+    // --- Вспомогательные функции (Твои оригинальные) ---
+    function tailsWord(n) {
+        if (n % 10 === 1 && n % 100 !== 11) return "хвост";
+        if ([2, 3, 4].includes(n % 10) && ![12, 13, 14].includes(n % 100)) return "хвоста";
+        return "хвостов";
+    }
 
-	if (!login.includes("-")) {
-		alert("Логин должен быть в формате X-YYYYY");
-	loader.style.display = "none";
-		return;
-	}
+    // Унифицированный рендер карточки (теперь используется везде)
+    function renderCard(subject, type, lessonNumber, date, topic, mark) {
+        const card = document.createElement("div");
+        card.className = "card";
+        const displayMark = mark && mark !== "" ? mark : "—";
+        const markClass = (displayMark === "1" || displayMark === "2" || displayMark === "нб" || displayMark === "д") ? "bad" : "warn";
+        
+        let tipZan = "";
+        if (type === "Практический") tipZan = "(практ.)";
+        else if (type === "Лекционный") tipZan = "(лекц.)";
 
-	const id_student = login.split("-")[1];
+        card.innerHTML = `
+            <div><b>Предмет:</b> ${subject} ${tipZan}</div>
+            <div><b>Дата:</b> ${date}</div>
+            <div><b>Тема:</b> №${lessonNumber} – ${topic?.trim() || ""}</div>
+            <div>
+                <b>Отметка: <span class="mark ${markClass}">${displayMark}</span></b>
+            </div>
+        `;
+        resultBody.appendChild(card);
+    }
 
-	try {
-		// 1. Получаем группу
-		const user = await fetchJSON(
-			`${BASE}/user?id_user=${id_student}&id_avn=-1&id_role=2`
-		);
-		const id_group = user.id_group;
+    try {
+        logTerminal("Проверка соединения с LMS...");
+        let useFallback = false;
 
-		// 2. Получаем семестр
-		const semesterData = await fetchJSON(
-			`${BASE}/student/semester/?id_year=${ID_YEAR}&id_ws=${id_ws}&id_group=${id_group}&id_student=${id_student}`
-		);
-		const id_semester = semesterData[0].id_semester;
+        // Быстрая проверка: жив ли SSL на сервере КГМА
+        try {
+            await fetch(`${BASE}/user?id_user=1&id_avn=-1&id_role=2`, { mode: 'no-cors' });
+        } catch (e) {
+            console.warn("LMS SSL Error, switching to Vercel...");
+            useFallback = true;
+        }
 
-		// 3. Получаем дисциплины
-		const disciplines = await fetchJSON(
-			`${BASE}/student/discipline/?id_year=${ID_YEAR}&id_ws=${id_ws}&id_group=${id_group}&id_student=${id_student}&id_semester=${id_semester}`
-		);
+        if (useFallback) {
+            logTerminal("Использую резервный канал Vercel...");
+            // Запрашиваем готовое дерево сразу
+            const res = await fetch(`${FALLBACK_BASE}/run?login=${login}&id_ws=${id_ws}`);
+            if (!res.ok) throw new Error(`Vercel Proxy Error: ${res.status}`);
+            const json = await res.json();
+            
+            json.data.forEach(item => {
+                tailsCount++;
+                renderCard(item.subject, item.type, item.lesson_number, item.date, item.topic, item.mark);
+            });
 
+        } else {
+            // --- ТВОЙ ОРИГИНАЛЬНЫЙ ЦИКЛ (Прямые запросы) ---
+            logTerminal("Прямое подключение к LMS...");
+            const id_student = login.split("-")[1];
 
-		for (const disc of disciplines) {
-			// 4. Типы занятий
-			const vids = await fetchJSON(
-				`${BASE}/student/vid-zanyatie?id_year=${ID_YEAR}&id_ws=${id_ws}&id_group=${id_group}&id_student=${id_student}&id_semester=${id_semester}&id_discipline=${disc.id_discipline}`);
+            const user = await fetchJSON(`${BASE}/user?id_user=${id_student}&id_avn=-1&id_role=2`);
+            const id_group = user.id_group;
 
-			for (const vid of vids) {
-				// 5. Преподаватели
-		cleanDisc = disc.discipline
-								.replace(/\[.*?\]\s*/g, "")	// убираем [что угодно]
-								.replace(/\(крд.*$/g, "") // убираем (крд.*
-								.trim();										 // удаляем лишние пробелы по краям
-		logTerminal(`${cleanDisc} (${vid.vid_zaniatiy})`);
+            const semesterData = await fetchJSON(`${BASE}/student/semester/?id_year=${ID_YEAR}&id_ws=${id_ws}&id_group=${id_group}&id_student=${id_student}`);
+            const id_semester = semesterData[0].id_semester;
 
-				const teachers = await fetchJSON(
-					`${BASE}/student/teacher/?id_year=${ID_YEAR}&id_ws=${id_ws}&id_group=${id_group}&id_student=${id_student}&id_discipline=${disc.id_discipline}&id_semester=${id_semester}&id_vid_zaniatiy=${vid.id_vid_zaniatiy}`);
+            const disciplines = await fetchJSON(`${BASE}/student/discipline/?id_year=${ID_YEAR}&id_ws=${id_ws}&id_group=${id_group}&id_student=${id_student}&id_semester=${id_semester}`);
 
+            for (const disc of disciplines) {
+                const vids = await fetchJSON(`${BASE}/student/vid-zanyatie?id_year=${ID_YEAR}&id_ws=${id_ws}&id_group=${id_group}&id_student=${id_student}&id_semester=${id_semester}&id_discipline=${disc.id_discipline}`);
 
-				for (const teacher of teachers) {
-					// 6. Журнал
-					const journal = await fetchJSON(
-						`${BASE}/student/journal?id_year=${ID_YEAR}&id_ws=${id_ws}&id_group=${id_group}&id_student=${id_student}&id_discipline=${disc.id_discipline}&id_vid_zaniatiy=${vid.id_vid_zaniatiy}&id_semester=${id_semester}&id_teacher=${teacher.id_teacher}`
-					);
-			const lessonCounter = {}; // { "273370-1": 0, "273370-2": 0 }
+                for (const vid of vids) {
+                    const cleanDisc = disc.discipline.replace(/\[.*?\]\s*/g, "").replace(/\(крд.*$/g, "").trim();
+                    logTerminal(`${cleanDisc} (${vid.vid_zaniatiy})`);
 
-					for (const lesson of journal) {
-				const key = `${disc.id_discipline}-${vid.id_vid_zaniatiy}`;
-			if (!lessonCounter[key]) lessonCounter[key] = 1;
-			else lessonCounter[key]++;
+                    const teachers = await fetchJSON(`${BASE}/student/teacher/?id_year=${ID_YEAR}&id_ws=${id_ws}&id_group=${id_group}&id_student=${id_student}&id_discipline=${disc.id_discipline}&id_semester=${id_semester}&id_vid_zaniatiy=${vid.id_vid_zaniatiy}`);
 
-			const lessonNumber = lessonCounter[key]; // <- вот правильный номер
+                    for (const teacher of teachers) {
+                        const journal = await fetchJSON(`${BASE}/student/journal?id_year=${ID_YEAR}&id_ws=${id_ws}&id_group=${id_group}&id_student=${id_student}&id_discipline=${disc.id_discipline}&id_vid_zaniatiy=${vid.id_vid_zaniatiy}&id_semester=${id_semester}&id_teacher=${teacher.id_teacher}`);
+                        
+                        let localCounter = 0;
+                        for (const lesson of journal) {
+                            localCounter++;
+                            if (isBadLesson(lesson, vid.vid_zaniatiy)) {
+                                tailsCount++;
+                                renderCard(cleanDisc, vid.vid_zaniatiy, localCounter, lesson.visitDate, lesson.lesson_topic, lesson.otsenka || lesson.otsenka_ball);
+                            }
+                        }
+                    }
+                }
+            }
+        }
 
-						if (isBadLesson(lesson, vid.vid_zaniatiy)) {
-				tailsCount++;
-					const card = document.createElement("div");
-				card.className = "card";
-				const displayMark =
-					lesson.otsenka && lesson.otsenka !== ""
-					? lesson.otsenka
-					: lesson.otsenka_ball;
+        // --- ФИНАЛИЗАЦИЯ (Твоя логика) ---
+        summary.textContent = tailsCount === 0
+            ? "Поздравляем, у вас нет хвостов!"
+            : `У вас ${tailsCount} ${tailsWord(tailsCount)}!`;
 
-				const markClass =
-					displayMark === "1" || displayMark === "2"
-					? "bad"
-					: "warn";
+        summary.style.background = tailsCount === 0
+            ? "linear-gradient(135deg, #009933, #00ff6a)"
+            : "linear-gradient(135deg, #2a1b1b, #1a0f0f)";
+        
+        summary.style.display = "block";
+        resultBody.style.display = "block";
+        summary.style.color = tailsCount === 0 ? "#fff" : "#ff6b6b";
 
-				let tipZan = ""; // объявляем снаружи
-				if (vid.vid_zaniatiy === "Практический") {
-					tipZan = "(практ.)";
-				} else if (vid.vid_zaniatiy === "Лекционный") {
-					tipZan = "(лекц.)";
-				}
+        if (tailsCount === 0) launchConfetti();
 
-				card.innerHTML = `
-					<div><b>Предмет:</b> ${disc.discipline} ${tipZan}</div>
-					<div><b>Дата:</b> ${lesson.visitDate}</div>
-					<div><b>Тема:</b> №${lessonNumber} – ${lesson.lesson_topic?.trim() || ""}</div>
-					<div>
-					<b>Отметка: <span class="mark ${markClass}">${displayMark}</span></b>
-					</div>
-				`;
-
-
-
-
-				resultBody.appendChild(card);
-
-						}
-					}
-				}
-			}
-		}
-	function tailsWord(n) {
-		if (n % 10 === 1 && n % 100 !== 11) return "хвост";
-		if ([2,3,4].includes(n % 10) && ![12,13,14].includes(n % 100)) return "хвоста";
-		return "хвостов";
-	}
-	window.tailsWord = tailsWord;
-	summary.textContent = tailsCount === 0
-		? "Поздравляем, у вас нет хвостов!"
-		: `У вас ${tailsCount} ${tailsWord(tailsCount)}!`;
-
-// Задаём цвет/градиент
-	summary.style.background = tailsCount === 0
-		? "linear-gradient(135deg, #009933, #00ff6a)"
-		// зелёный градиент
-		: "linear-gradient(135deg, #2a1b1b, #1a0f0f)";
-		// прежний градиент
-		summary.style.display = "block";
-		resultBody.style.display = "block";
-		summary.style.color = tailsCount === 0 ? "#fff" : "#ff6b6b";
-		if (tailsCount === 0){
-			launchConfetti();
-		};
-		} catch (e) {
-		console.error(e);
-		fatalError = true;
-		logTerminal("!!! ERROR !!!");
-		logTerminal(e.message || String(e));
-		if (e.stack) {
-		e.stack.split("\n").forEach(line => logTerminal(line));
-		}
-
-		alert(
-		"Произошла ошибка.\n\n" +
-		(e.message || "Unknown error") +
-		"\n\nПодробности выведены ниже."
-		);
-		return;
-		} finally {
-			if (!fatalError) {
-				loader.style.display = "none";
-			}
-		}
-	
-	};
-
-
-
+    } catch (e) {
+        console.error(e);
+        logTerminal("!!! ERROR !!!");
+        logTerminal(e.message || String(e));
+        alert("Ошибка: " + (e.message || "Unknown error"));
+    } finally {
+        loader.style.display = "none";
+    }
+}
 
 // Получение куки по имени
 function getCookie(name) {
