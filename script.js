@@ -37,10 +37,25 @@ function isBadLesson(lesson, vidType) {
 
 
 
-async function fetchJSON(url) {
-	const res = await fetch(url);
-	const json = await res.json();
-	return json.data || [];
+async function fetchJSON(url, fallbackData = null) {
+  try {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const json = await res.json();
+    return json.data || [];
+  } catch (e) {
+    if (!fallbackData) throw e;
+    console.warn("Direct fetch failed, using fallback:", e.message);
+
+    const fallbackRes = await fetch(FALLBACK_BASE, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(fallbackData)
+    });
+    if (!fallbackRes.ok) throw new Error(`Fallback HTTP ${fallbackRes.status}`);
+    const fallbackJson = await fallbackRes.json();
+    return fallbackJson.data || [];
+  }
 }
 
 
