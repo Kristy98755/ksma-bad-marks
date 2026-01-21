@@ -1,93 +1,69 @@
 import fetch from "node-fetch";
 import https from "https";
 
-// Настройки SSL
-const agent = new https.Agent({ rejectUnauthorized: false });
-
-// Настройки
 const BASE = "https://lms.kgma.kg/vm/api/";
 const ID_YEAR = 25;
 
-// Проверка плохой оценки
+// Простая функция проверки плохой оценки
 function isBadLesson(lesson, vidType) {
   const mark = String(lesson.otsenka_ball);
   const status = String(lesson.otsenka || "").toLowerCase();
   const attempt = lesson.attempt;
-
   if (attempt === 2 || attempt === 3) return false;
-
   if (vidType === "Лекционный") return status === "д" || status === "нб";
   return mark === "1" || mark === "2" || status === "д" || status === "нб";
 }
 
-async function fetchJSON(url) {
-  const res = await fetch(url, { agent });
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  const json = await res.json();
-  return json.data || [];
-}
-
 export default async function handler(req, res) {
-  if (req.method !== "POST") {
-    return res.status(405).json({ error: "Method not allowed" });
-  }
-
   try {
-    const { login, id_ws } = req.body;
+    const { login, id_ws } = req.query;
+
     if (!login || !id_ws) {
-      return res.status(400).json({ error: "Missing login or id_ws" });
+      return res.status(400).json({ error: "login and id_ws required" });
     }
 
     const id_student = login.split("-")[1];
-    if (!id_student) {
-      return res.status(400).json({ error: "Invalid login format" });
-    }
 
-    // 1. Группа
-    const user = await fetchJSON(`${BASE}/user?id_user=${id_student}&id_avn=-1&id_role=2`);
-    const id_group = user.id_group;
+    const agent = new https.Agent({ rejectUnauthorized: false });
+
+    // 1. Получаем группу
+    const userResp = await fetch(`${BASE}/user?id_user=${id_student}&id_avn=-1&id_role=2`, { agent });
+    const user = await userResp.json();
+    const id_group = user.data.id_group;
 
     // 2. Семестр
-    const semesterData = await fetchJSON(`${BASE}/student/semester/?id_year=${ID_YEAR}&id_ws=${id_ws}&id_group=${id_group}&id_student=${id_student}`);
-    const id_semester = semesterData[0].id_semester;
+    const semResp = await fetch(`${BASE}/student/semester/?id_year=${ID_YEAR}&id_ws=${id_ws}&id_group=${id_group}&id_student=${id_student}`, { agent });
+    const semData = await semResp.json();
+    const id_semester = semData.data[0].id_semester;
 
     // 3. Дисциплины
-    const disciplines = await fetchJSON(`${BASE}/student/discipline/?id_year=${ID_YEAR}&id_ws=${id_ws}&id_group=${id_group}&id_student=${id_student}&id_semester=${id_semester}`);
+    const discResp = await fetch(`${BASE}/student/discipline/?id_year=${ID_YEAR}&id_ws=${id_ws}&id_group=${id_group}&id_student=${id_student}&id_semester=${id_semester}`, { agent });
+    const disciplines = await discResp.json();
+    
+    const results = [];
 
-    const result = [];
-
-    for (const disc of disciplines) {
+    for (const disc of disciplines.data) {
       // 4. Типы занятий
-      const vids = await fetchJSON(`${BASE}/student/vid-zanyatie?id_year=${ID_YEAR}&id_ws=${id_ws}&id_group=${id_group}&id_student=${id_student}&id_semester=${id_semester}&id_discipline=${disc.id_discipline}`);
+      const vidsResp = await fetch(`${BASE}/student/vid-zanyatie?id_year=${ID_YEAR}&id_ws=${id_ws}&id_group=${id_group}&id_student=${id_student}&id_semester=${id_semester}&id_discipline=${disc.id_discipline}`, { agent });
+      const vids = await vidsResp.json();
 
-      for (const vid of vids) {
-        const cleanDisc = disc.discipline
-          .replace(/\[.*?\]\s*/g, "")
-          .replace(/\(крд.*$/g, "")
-          .trim();
-
+      for (const vid of vids.data) {
         // 5. Преподаватели
-        const teachers = await fetchJSON(`${BASE}/student/teacher/?id_year=${ID_YEAR}&id_ws=${id_ws}&id_group=${id_group}&id_student=${id_student}&id_discipline=${disc.id_discipline}&id_semester=${id_semester}&id_vid_zaniatiy=${vid.id_vid_zaniatiy}`);
+        const teachersResp = await fetch(`${BASE}/student/teacher/?id_year=${ID_YEAR}&id_ws=${id_ws}&id_group=${id_group}&id_student=${id_student}&id_discipline=${disc.id_discipline}&id_semester=${id_semester}&id_vid_zaniatiy=${vid.id_vid_zaniatiy}`, { agent });
+        const teachers = await teachersResp.json();
 
-        for (const teacher of teachers) {
+        for (const teacher of teachers.data) {
           // 6. Журнал
-          const journal = await fetchJSON(`${BASE}/student/journal?id_year=${ID_YEAR}&id_ws=${id_ws}&id_group=${id_group}&id_student=${id_student}&id_discipline=${disc.id_discipline}&id_vid_zaniatiy=${vid.id_vid_zaniatiy}&id_semester=${id_semester}&id_teacher=${teacher.id_teacher}`);
+          const journalResp = await fetch(`${BASE}/student/journal?id_year=${ID_YEAR}&id_ws=${id_ws}&id_group=${id_group}&id_student=${id_student}&id_discipline=${disc.id_discipline}&id_vid_zaniatiy=${vid.id_vid_zaniatiy}&id_semester=${id_semester}&id_teacher=${teacher.id_teacher}`, { agent });
+          const journal = await journalResp.json();
 
-          const lessonCounter = {};
-
-          for (const lesson of journal) {
-            const key = `${disc.id_discipline}-${vid.id_vid_zaniatiy}`;
-            if (!lessonCounter[key]) lessonCounter[key] = 1;
-            else lessonCounter[key]++;
-
-            const lessonNumber = lessonCounter[key];
-
+          for (const lesson of journal.data) {
             if (isBadLesson(lesson, vid.vid_zaniatiy)) {
-              result.push({
-                discipline: cleanDisc,
+              results.push({
+                discipline: disc.discipline.replace(/\[.*?\]\s*/g, "").replace(/\(крд.*$/g, "").trim(),
                 vidType: vid.vid_zaniatiy,
                 date: lesson.visitDate,
-                lessonNumber,
+                lessonNumber: lesson.lesson_number || 0,
                 topic: lesson.lesson_topic?.trim() || "",
                 mark: lesson.otsenka || lesson.otsenka_ball
               });
@@ -97,9 +73,12 @@ export default async function handler(req, res) {
       }
     }
 
-    return res.status(200).json({ data: result });
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Content-Type", "application/json; charset=utf-8");
+    res.status(200).json({ data: results });
+
   } catch (e) {
-    console.error("Fetch failed:", e);
-    return res.status(500).json({ error: String(e) });
+    console.error(e);
+    res.status(500).json({ error: String(e) });
   }
 }
