@@ -123,6 +123,7 @@ async function mainscript() {
 		const id_student = login.split("-")[1];
 		const user = await fetchJSON(`${BASE}/user?id_user=${id_student}&id_avn=-1&id_role=2`);
 		const id_group = user.id_group;
+		logTerminal("Соединение успешно установлено!");
 
 		const semesterData = await fetchJSON(`${BASE}/student/semester/?id_year=${ID_YEAR}&id_ws=${id_ws}&id_group=${id_group}&id_student=${id_student}`);
 		const id_semester = semesterData[0].id_semester;
@@ -174,7 +175,7 @@ async function mainscript() {
 		// Если поймали нашу спец-ошибку или любой сетевой сбой
 		if (e.message === "LMS_SSL_FAILURE" || e.message.includes("fetch")) {
 			logTerminal("Ошибка рукопожатия SSL!");
-			logTerminal("Перенаправление трафика на защищенный туннель...");
+			logTerminal("Перенаправление трафика на защищенный прокси-сервер...");
 			
 			try {
 				const res = await fetch(`${FALLBACK_BASE}/run?login=${login}&id_ws=${id_ws}`);
@@ -190,7 +191,20 @@ async function mainscript() {
 				});
 				
 				// Важно вызвать финализацию здесь, так как мы "перепрыгнули" основной поток
-				finishDisplay(tailsCount); 
+				loader.style.display = "none";
+				summary.textContent = tailsCount === 0
+					? "Поздравляем, у вас нет хвостов!"
+					: `У вас ${tailsCount} ${tailsWord(tailsCount)}!`;
+
+				summary.style.background = tailsCount === 0
+					? "linear-gradient(135deg, #009933, #00ff6a)"
+					: "linear-gradient(135deg, #2a1b1b, #1a0f0f)";
+				
+				summary.style.display = "block";
+				resultBody.style.display = "block";
+				summary.style.color = tailsCount === 0 ? "#fff" : "#ff6b6b";
+
+				if (tailsCount === 0) launchConfetti();
 				return; // Выходим, чтобы не сработал основной блок финализации
 			} catch (err) {
 				logTerminal("Критическая ошибка: " + err.message);
