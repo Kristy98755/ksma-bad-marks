@@ -4,7 +4,7 @@ const BASE = "https://ksma-bad-marks.vercel.app/api/proxy";
 const ID_YEAR = 25;
 let cleanDisc;
 const resultBody = document.getElementById("result");
-// Предположим, твоя кнопка запускает функцию loadData()
+// кнопка запускает функцию loadData()
 const loginInput = document.getElementById("login");
 const loadButton = document.getElementById("load");
 let inProgress = false;
