@@ -37,25 +37,26 @@ function isBadLesson(lesson, vidType) {
 
 
 
-async function fetchJSON(url, fallbackData = null) {
-  try {
-    const res = await fetch(url);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const json = await res.json();
-    return json.data || [];
-  } catch (e) {
-    if (!fallbackData) throw e;
-    console.warn("Direct fetch failed, using fallback:", e.message);
+let isLmsBroken = false; // Глобальный флаг состояния сети
 
-    const fallbackRes = await fetch(FALLBACK_BASE, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(fallbackData)
-    });
-    if (!fallbackRes.ok) throw new Error(`Fallback HTTP ${fallbackRes.status}`);
-    const fallbackJson = await fallbackRes.json();
-    return fallbackJson.data || [];
-  }
+async function fetchJSON(url) {
+    // Если мы уже поняли, что LMS не отвечает, сразу кидаем ошибку, 
+    // чтобы основной цикл прервался и ушел в общий catch для fallback
+    if (isLmsBroken) {
+        throw new Error("LMS_SSL_FAILURE");
+    }
+
+    try {
+        const res = await fetch(url);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const json = await res.json();
+        return json.data || [];
+    } catch (e) {
+        // Ловим "Failed to fetch" и прочие сетевые ужасы
+        console.error("Network error detected:", e.message);
+        isLmsBroken = true; 
+        throw new Error("LMS_SSL_FAILURE");
+    }
 }
 
 
@@ -74,7 +75,6 @@ document.getElementById("load").onclick = async() => {
 // ... (оставляем BASE, FALLBACK_BASE, ID_YEAR и обработчики куки в начале файла)
 
 async function mainscript() {
-    const loader = document.getElementById("loader");
     const summary = document.getElementById("summary");
     const resultBody = document.getElementById("result");
     const login = document.getElementById("login").value.trim();
@@ -115,68 +115,46 @@ async function mainscript() {
     }
 
     try {
-        logTerminal("Проверка соединения с LMS...");
-        let useFallback = false;
+		isLmsBroken = false; // Сбрасываем флаг при новом поиске
+		
+		// Пытаемся идти по обычному дереву
+		console.log("Попытка прямого соединения с LMS...");
+		const id_student = login.split("-")[1];
+		const user = await fetchJSON(`${BASE}/user?id_user=${id_student}&id_avn=-1&id_role=2`);
+		const id_group = user.id_group;
 
-        // Быстрая проверка: жив ли SSL на сервере КГМА
-        try {
-            await fetch(`${BASE}/user?id_user=1&id_avn=-1&id_role=2`, { mode: 'no-cors' });
-        } catch (e) {
-            console.warn("LMS SSL Error, switching to Vercel...");
-            useFallback = true;
-        }
+		const semesterData = await fetchJSON(`${BASE}/student/semester/?id_year=${ID_YEAR}&id_ws=${id_ws}&id_group=${id_group}&id_student=${id_student}`);
+		const id_semester = semesterData[0].id_semester;
 
-        if (useFallback) {
-            logTerminal("Использую резервный канал Vercel...");
-            // Запрашиваем готовое дерево сразу
-            const res = await fetch(`${FALLBACK_BASE}/run?login=${login}&id_ws=${id_ws}`);
-            if (!res.ok) throw new Error(`Vercel Proxy Error: ${res.status}`);
-            const json = await res.json();
-            
-            json.data.forEach(item => {
-                tailsCount++;
-                renderCard(item.subject, item.type, item.lesson_number, item.date, item.topic, item.mark);
-            });
+		const disciplines = await fetchJSON(`${BASE}/student/discipline/?id_year=${ID_YEAR}&id_ws=${id_ws}&id_group=${id_group}&id_student=${id_student}&id_semester=${id_semester}`);
 
-        } else {
-            // --- ТВОЙ ОРИГИНАЛЬНЫЙ ЦИКЛ (Прямые запросы) ---
-            logTerminal("Прямое подключение к LMS...");
-            const id_student = login.split("-")[1];
+		for (const disc of disciplines) {
+			const vids = await fetchJSON(`${BASE}/student/vid-zanyatie?id_year=${ID_YEAR}&id_ws=${id_ws}&id_group=${id_group}&id_student=${id_student}&id_semester=${id_semester}&id_discipline=${disc.id_discipline}`);
 
-            const user = await fetchJSON(`${BASE}/user?id_user=${id_student}&id_avn=-1&id_role=2`);
-            const id_group = user.id_group;
+			for (const vid of vids) {
+				const cleanDisc = disc.discipline.replace(/\[.*?\]\s*/g, "").replace(/\(крд.*$/g, "").trim();
+				logTerminal(`${cleanDisc} (${vid.vid_zaniatiy})`);
 
-            const semesterData = await fetchJSON(`${BASE}/student/semester/?id_year=${ID_YEAR}&id_ws=${id_ws}&id_group=${id_group}&id_student=${id_student}`);
-            const id_semester = semesterData[0].id_semester;
+				const teachers = await fetchJSON(`${BASE}/student/teacher/?id_year=${ID_YEAR}&id_ws=${id_ws}&id_group=${id_group}&id_student=${id_student}&id_discipline=${disc.id_discipline}&id_semester=${id_semester}&id_vid_zaniatiy=${vid.id_vid_zaniatiy}`);
 
-            const disciplines = await fetchJSON(`${BASE}/student/discipline/?id_year=${ID_YEAR}&id_ws=${id_ws}&id_group=${id_group}&id_student=${id_student}&id_semester=${id_semester}`);
+				for (const teacher of teachers) {
+					const journal = await fetchJSON(`${BASE}/student/journal?id_year=${ID_YEAR}&id_ws=${id_ws}&id_group=${id_group}&id_student=${id_student}&id_discipline=${disc.id_discipline}&id_vid_zaniatiy=${vid.id_vid_zaniatiy}&id_semester=${id_semester}&id_teacher=${teacher.id_teacher}`);
+					
+					let localCounter = 0;
+					for (const lesson of journal) {
+						localCounter++;
+						if (isBadLesson(lesson, vid.vid_zaniatiy)) {
+							tailsCount++;
+							renderCard(cleanDisc, vid.vid_zaniatiy, localCounter, lesson.visitDate, lesson.lesson_topic, lesson.otsenka || lesson.otsenka_ball);
+						}
+					}
+				}
+			}
+		}
+        
 
-            for (const disc of disciplines) {
-                const vids = await fetchJSON(`${BASE}/student/vid-zanyatie?id_year=${ID_YEAR}&id_ws=${id_ws}&id_group=${id_group}&id_student=${id_student}&id_semester=${id_semester}&id_discipline=${disc.id_discipline}`);
-
-                for (const vid of vids) {
-                    const cleanDisc = disc.discipline.replace(/\[.*?\]\s*/g, "").replace(/\(крд.*$/g, "").trim();
-                    logTerminal(`${cleanDisc} (${vid.vid_zaniatiy})`);
-
-                    const teachers = await fetchJSON(`${BASE}/student/teacher/?id_year=${ID_YEAR}&id_ws=${id_ws}&id_group=${id_group}&id_student=${id_student}&id_discipline=${disc.id_discipline}&id_semester=${id_semester}&id_vid_zaniatiy=${vid.id_vid_zaniatiy}`);
-
-                    for (const teacher of teachers) {
-                        const journal = await fetchJSON(`${BASE}/student/journal?id_year=${ID_YEAR}&id_ws=${id_ws}&id_group=${id_group}&id_student=${id_student}&id_discipline=${disc.id_discipline}&id_vid_zaniatiy=${vid.id_vid_zaniatiy}&id_semester=${id_semester}&id_teacher=${teacher.id_teacher}`);
-                        
-                        let localCounter = 0;
-                        for (const lesson of journal) {
-                            localCounter++;
-                            if (isBadLesson(lesson, vid.vid_zaniatiy)) {
-                                tailsCount++;
-                                renderCard(cleanDisc, vid.vid_zaniatiy, localCounter, lesson.visitDate, lesson.lesson_topic, lesson.otsenka || lesson.otsenka_ball);
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // --- ФИНАЛИЗАЦИЯ (Твоя логика) ---
+        // --- ФИНАЛИЗАЦИЯ ---
+		loader.style.display = "none";
         summary.textContent = tailsCount === 0
             ? "Поздравляем, у вас нет хвостов!"
             : `У вас ${tailsCount} ${tailsWord(tailsCount)}!`;
@@ -192,13 +170,34 @@ async function mainscript() {
         if (tailsCount === 0) launchConfetti();
 
     } catch (e) {
-        console.error(e);
-        logTerminal("!!! ERROR !!!");
-        logTerminal(e.message || String(e));
-        alert("Ошибка: " + (e.message || "Unknown error"));
-    } finally {
-        loader.style.display = "none";
-    }
+		// Если поймали нашу спец-ошибку или любой сетевой сбой
+		if (e.message === "LMS_SSL_FAILURE" || e.message.includes("fetch")) {
+			logTerminal("SSL Error! Переключаюсь на Vercel...");
+			
+			try {
+				const res = await fetch(`${FALLBACK_BASE}/run?login=${login}&id_ws=${id_ws}`);
+				if (!res.ok) throw new Error("Vercel тоже недоступен");
+				const json = await res.json();
+				
+				json.data.forEach(item => {
+					tailsCount++;
+					renderCard(item.subject, item.type, item.lesson_number, item.date, item.topic, item.mark);
+				});
+				
+				// Важно вызвать финализацию здесь, так как мы "перепрыгнули" основной поток
+				finishDisplay(tailsCount); 
+				return; // Выходим, чтобы не сработал основной блок финализации
+			} catch (err) {
+				logTerminal("Критическая ошибка: " + err.message);
+			}
+		} else {
+			// Если это была не сетевая ошибка, а какая-то другая
+			console.error(e);
+			logTerminal("!!! ERROR !!!");
+			logTerminal(e.message || String(e));
+			alert("Ошибка: " + (e.message || "Unknown error"));
+		}
+	}
 }
 
 // Получение куки по имени
