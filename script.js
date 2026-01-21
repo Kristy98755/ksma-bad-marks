@@ -40,39 +40,36 @@ function fetchJSON(url) {
 		const xhr = new XMLHttpRequest();
 
 		xhr.open("GET", url, true);
-
-		// Критично для старых WebView
 		xhr.responseType = "json";
 
-		xhr.onreadystatechange = function () {
-			if (xhr.readyState !== 4) return;
-
-			// HTTP-level ошибка
-			if (xhr.status < 200 || xhr.status >= 300) {
+		xhr.onload = function () {
+			// status === 0 сюда НЕ должен попадать
+			if (xhr.status >= 200 && xhr.status < 300) {
+				const json = xhr.response || (
+					xhr.responseText ? JSON.parse(xhr.responseText) : null
+				);
+				resolve(json?.data || []);
+			} else {
 				reject(new Error(`HTTP ${xhr.status}`));
-				return;
 			}
-
-			let json = xhr.response;
-
-			// Fallback, если responseType=json не сработал
-			if (!json && xhr.responseText) {
-				try {
-					json = JSON.parse(xhr.responseText);
-				} catch (e) {
-					reject(new Error("Invalid JSON"));
-					return;
-				}
-			}
-
-			resolve(json?.data || []);
 		};
 
 		xhr.onerror = function () {
-			reject(new Error("Network error"));
+			// именно тут MTK и падает
+			reject(new Error("Network error (MTK / WebView)"));
 		};
 
-		xhr.send(null);
+		xhr.ontimeout = function () {
+			reject(new Error("Request timeout"));
+		};
+
+		xhr.timeout = 15000; // важно: иначе зависнет навсегда
+
+		try {
+			xhr.send(null);
+		} catch (e) {
+			reject(e);
+		}
 	});
 }
 
