@@ -1,4 +1,5 @@
-const BASE = "https://ksma-bad-marks.vercel.app/vm/api";
+const BASE = "https://ksma-bad-marks.vercel.app/api/proxy";
+
 
 const ID_YEAR = 25;
 let cleanDisc;

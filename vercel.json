@@ -1,8 +1,7 @@
 {
-  "rewrites": [
-    {
-      "source": "/vm/api/:path*",
-      "destination": "https://lms.kgma.kg/vm/api/:path*"
+  "functions": {
+    "api/*.js": {
+      "runtime": "nodejs18.x"
     }
-  ]
+  }
 }
