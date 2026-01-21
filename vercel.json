@@ -1,0 +1,8 @@
+{
+  "rewrites": [
+    {
+      "source": "/vm/api/:path*",
+      "destination": "https://lms.kgma.kg/vm/api/:path*"
+    }
+  ]
+}

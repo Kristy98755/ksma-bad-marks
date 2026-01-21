@@ -1,5 +1,4 @@
-const RAW_BASE = "https://lms.kgma.kg/vm/api";
-const BASE = `/api/proxy?url=${encodeURIComponent(RAW_BASE)}`;
+const BASE = "https://ksma-bad-marks.vercel.app/vm/api";
 
 const ID_YEAR = 25;
 let cleanDisc;
