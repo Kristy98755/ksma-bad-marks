@@ -2,7 +2,7 @@
 import fetch from "node-fetch";
 import https from "https";
 
-const BASE = "https://lms.kgma.kg/vm";
+const BASE = "https://lms.kgma.kg/vm/api";
 const ID_YEAR = 25;
 const agent = new https.Agent({ rejectUnauthorized: false });
 
