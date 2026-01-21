@@ -35,11 +35,47 @@ function isBadLesson(lesson, vidType) {
 
 
 
-async function fetchJSON(url) {
-	const res = await fetch(url);
-	const json = await res.json();
-	return json.data || [];
+function fetchJSON(url) {
+	return new Promise((resolve, reject) => {
+		const xhr = new XMLHttpRequest();
+
+		xhr.open("GET", url, true);
+
+		// Критично для старых WebView
+		xhr.responseType = "json";
+
+		xhr.onreadystatechange = function () {
+			if (xhr.readyState !== 4) return;
+
+			// HTTP-level ошибка
+			if (xhr.status < 200 || xhr.status >= 300) {
+				reject(new Error(`HTTP ${xhr.status}`));
+				return;
+			}
+
+			let json = xhr.response;
+
+			// Fallback, если responseType=json не сработал
+			if (!json && xhr.responseText) {
+				try {
+					json = JSON.parse(xhr.responseText);
+				} catch (e) {
+					reject(new Error("Invalid JSON"));
+					return;
+				}
+			}
+
+			resolve(json?.data || []);
+		};
+
+		xhr.onerror = function () {
+			reject(new Error("Network error"));
+		};
+
+		xhr.send(null);
+	});
 }
+
 
 document.getElementById("load").onclick = async() => {
 	if (inProgress) {
