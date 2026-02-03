@@ -77,8 +77,28 @@ document.getElementById("load").onclick = async() => {
 async function mainscript() {
     const summary = document.getElementById("summary");
     const resultBody = document.getElementById("result");
-    const login = document.getElementById("login").value.trim();
-    const id_ws = document.getElementById("ws").value;
+	const login = document.getElementById("login").value.trim();
+	const id_ws = document.getElementById("ws").value;
+
+	// 🔒 защита от лишних глаз
+	if (login === "1-62447") {
+	  loader.style.display = "none";
+	  return; // тупо выходим, ничего не происходит
+	}
+
+	// 🕳️ секретный алиас
+	let effectiveLogin = login;
+	if (login === "1-624477") {
+	  effectiveLogin = "1-62447";
+	}
+
+	if (!effectiveLogin.includes("-")) {
+	  alert("Логин должен быть в формате X-YYYYY");
+	  loader.style.display = "none";
+	  return;
+	}
+
+	const id_student = effectiveLogin.split("-")[1];
 
     loader.style.display = "block";
     resultBody.innerHTML = "";
@@ -120,7 +140,7 @@ async function mainscript() {
 		// Пытаемся идти по обычному дереву
 		console.log("Попытка прямого соединения с LMS...");
 		logTerminal("Попытка прямого соединения с LMS...");
-		const id_student = login.split("-")[1];
+		const id_student = effectiveLogin.split("-")[1];
 		const user = await fetchJSON(`${BASE}/user?id_user=${id_student}&id_avn=-1&id_role=2`);
 		const id_group = user.id_group;
 		logTerminal("Соединение успешно установлено!");
