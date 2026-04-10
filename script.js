@@ -102,8 +102,11 @@ async function mainscript() {
 
     loader.style.display = "block";
     resultBody.innerHTML = "";
+    document.querySelectorAll(".special-container").forEach(el => el.remove());
     summary.style.display = "none";
     let tailsCount = 0;
+    let specialTailsCount = 0;
+    const specialCardsElements = [];
 
     // --- Вспомогательные функции (Твои оригинальные) ---
     function tailsWord(n) {
@@ -112,12 +115,19 @@ async function mainscript() {
         return "хвостов";
     }
 
-    // Унифицированный рендер карточки (теперь используется везде)
-    function renderCard(subject, type, lessonNumber, date, topic, mark) {
+    function checkSpecial(idGroup, subject, markStr) {
+        if (String(idGroup) !== "9388") return false;
+        const isTargetSubject = subject.includes("ВМП-ОТМС") || subject.includes("Пропедевтик");
+        if (!isTargetSubject) return false;
+        if (markStr === "н/б" || markStr === "нб") return false;
+        return true;
+    }
+
+    function createCard(subject, type, lessonNumber, date, topic, mark, isSpecial) {
         const card = document.createElement("div");
         card.className = "card";
         const displayMark = mark && mark !== "" ? mark : "—";
-        const markClass = (displayMark === "1" || displayMark === "2" || displayMark === "н/б" || displayMark === "д") ? "bad" : "warn";
+        const markClass = (displayMark === "1" || displayMark === "2" || displayMark === "н/б" || displayMark === "нб" || displayMark === "д") ? "bad" : "warn";
         
         let tipZan = "";
         if (type === "Практический") tipZan = "(практ.)";
@@ -131,7 +141,54 @@ async function mainscript() {
                 <b>Отметка: <span class="mark ${markClass}">${displayMark}</span></b>
             </div>
         `;
-        resultBody.appendChild(card);
+
+        if (isSpecial) {
+            card.classList.add("special");
+        }
+        
+        return card;
+    }
+
+    function finalizeResults() {
+        loader.style.display = "none";
+        summary.textContent = tailsCount === 0
+            ? "Поздравляем, у вас нет хвостов!"
+            : `У вас ${tailsCount} ${tailsWord(tailsCount)}!`;
+
+        summary.style.background = tailsCount === 0
+            ? "linear-gradient(135deg, #009933, #00ff6a)"
+            : "linear-gradient(135deg, #2a1b1b, #1a0f0f)";
+        
+        summary.style.display = "block";
+        resultBody.style.display = "grid";
+        summary.style.color = tailsCount === 0 ? "#fff" : "#ff6b6b";
+
+        if (specialTailsCount > 0) {
+            const specialContainer = document.createElement("div");
+            specialContainer.className = "special-container";
+            
+            const specialSummary = document.createElement("div");
+            specialSummary.className = "summary";
+            specialSummary.style.display = "block";
+            specialSummary.style.marginTop = "32px";
+            specialSummary.style.background = "linear-gradient(135deg, #2a332d, #1a231d)";
+            specialSummary.style.color = "#8ea890";
+            specialSummary.textContent = `Преподы сами закроют ${specialTailsCount} ${tailsWord(specialTailsCount)}`;
+            
+            const specialGrid = document.createElement("div");
+            specialGrid.style.display = "grid";
+            specialGrid.style.gridTemplateColumns = "repeat(auto-fill, minmax(320px, 1fr))";
+            specialGrid.style.gap = "18px";
+            specialGrid.style.marginBottom = "32px";
+            
+            specialCardsElements.forEach(c => specialGrid.appendChild(c));
+            
+            specialContainer.appendChild(specialSummary);
+            specialContainer.appendChild(specialGrid);
+            resultBody.parentNode.insertBefore(specialContainer, resultBody.nextSibling);
+        }
+
+        if (tailsCount === 0) launchConfetti();
     }
 
     try {
@@ -166,8 +223,15 @@ async function mainscript() {
 					for (const lesson of journal) {
 						localCounter++;
 						if (isBadLesson(lesson, vid.vid_zaniatiy)) {
-							tailsCount++;
-							renderCard(cleanDisc, vid.vid_zaniatiy, localCounter, lesson.visitDate, lesson.lesson_topic, lesson.otsenka || lesson.otsenka_ball);
+							const markVal = String(lesson.otsenka || lesson.otsenka_ball).toLowerCase();
+							const isSpecial = checkSpecial(id_group, cleanDisc, markVal);
+							if (isSpecial) {
+								specialTailsCount++;
+								specialCardsElements.push(createCard(cleanDisc, vid.vid_zaniatiy, localCounter, lesson.visitDate, lesson.lesson_topic, lesson.otsenka || lesson.otsenka_ball, true));
+							} else {
+								tailsCount++;
+								resultBody.appendChild(createCard(cleanDisc, vid.vid_zaniatiy, localCounter, lesson.visitDate, lesson.lesson_topic, lesson.otsenka || lesson.otsenka_ball, false));
+							}
 						}
 					}
 				}
@@ -176,20 +240,7 @@ async function mainscript() {
         
 
         // --- ФИНАЛИЗАЦИЯ ---
-		loader.style.display = "none";
-        summary.textContent = tailsCount === 0
-            ? "Поздравляем, у вас нет хвостов!"
-            : `У вас ${tailsCount} ${tailsWord(tailsCount)}!`;
-
-        summary.style.background = tailsCount === 0
-            ? "linear-gradient(135deg, #009933, #00ff6a)"
-            : "linear-gradient(135deg, #2a1b1b, #1a0f0f)";
-        
-        summary.style.display = "block";
-        resultBody.style.display = "block";
-        summary.style.color = tailsCount === 0 ? "#fff" : "#ff6b6b";
-
-        if (tailsCount === 0) launchConfetti();
+		finalizeResults();
 
     } catch (e) {
 		// Если поймали нашу спец-ошибку или любой сетевой сбой
@@ -203,27 +254,22 @@ async function mainscript() {
 				if (!res.ok) throw new Error("Не удалось установить защищенное соединение.");
 
 				const json = await res.json();
+				const id_groupFallback = json.id_group || "";
 				
 				json.data.forEach(item => {
-					tailsCount++;
-					renderCard(item.subject, item.type, item.lesson_number, item.date, item.topic, item.mark);
+					const markVal = String(item.mark).toLowerCase();
+					const isSpecial = checkSpecial(id_groupFallback, item.subject, markVal);
+					if (isSpecial) {
+						specialTailsCount++;
+						specialCardsElements.push(createCard(item.subject, item.type, item.lesson_number, item.date, item.topic, item.mark, true));
+					} else {
+						tailsCount++;
+						resultBody.appendChild(createCard(item.subject, item.type, item.lesson_number, item.date, item.topic, item.mark, false));
+					}
 				});
 				
 				// Важно вызвать финализацию здесь, так как мы "перепрыгнули" основной поток
-				loader.style.display = "none";
-				summary.textContent = tailsCount === 0
-					? "Поздравляем, у вас нет хвостов!"
-					: `У вас ${tailsCount} ${tailsWord(tailsCount)}!`;
-
-				summary.style.background = tailsCount === 0
-					? "linear-gradient(135deg, #009933, #00ff6a)"
-					: "linear-gradient(135deg, #2a1b1b, #1a0f0f)";
-				
-				summary.style.display = "block";
-				resultBody.style.display = "block";
-				summary.style.color = tailsCount === 0 ? "#fff" : "#ff6b6b";
-
-				if (tailsCount === 0) launchConfetti();
+				finalizeResults();
 				return; // Выходим, чтобы не сработал основной блок финализации
 			} catch (err) {
 				logTerminal("Критическая ошибка: " + err.message);

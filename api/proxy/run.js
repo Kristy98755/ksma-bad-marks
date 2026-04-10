@@ -80,7 +80,7 @@ export default async function handler(req, res) {
     const finalData = resultsArray.flat();
 
     res.setHeader("Content-Type", "application/json");
-    res.status(200).json({ data: finalData });
+    res.status(200).json({ data: finalData, id_group: id_group });
 
   } catch (e) {
     console.error(e);
