@@ -117,9 +117,10 @@ async function mainscript() {
 
     function checkSpecial(idGroup, subject, markStr) {
         if (String(idGroup) !== "9388") return false;
-        const isTargetSubject = subject.includes("ВМП-ОТМС") || subject.includes("Пропедевтик");
+        const isTargetSubject = subject.includes("ВМП-ОТМС") || subject.includes("Пропедевтики") ||
+subject.includes("Офтальмология");
         if (!isTargetSubject) return false;
-        if (markStr === "н/б" || markStr === "нб") return false;
+        if (markStr === "д" || markStr === "нб" || markStr === "н/б") return false;
         return true;
     }
 
