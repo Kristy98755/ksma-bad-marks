@@ -2,12 +2,10 @@ const BASE = "https://lms.kgma.kg/vm/api";
 const FALLBACK_BASE = "https://ksma-bad-marks.vercel.app/api/proxy";
 
 const ID_YEAR = 25;
-let cleanDisc;
 const resultBody = document.getElementById("result");
 const loginInput = document.getElementById("login");
 const loadButton = document.getElementById("load");
 let inProgress = false;
-let fatalError = false;
 
 loginInput.addEventListener("keydown", function(e) {
     if (e.key === "Enter") {
@@ -20,7 +18,6 @@ function isBadLesson(lesson, vidType) {
     const mark = String(lesson.otsenka_ball);
     const status = String(lesson.otsenka || "").toLowerCase();
     const attempt = lesson.attempt;
-
     if (attempt === 2 || attempt === 3) return false;
     if (vidType === "Лекционный") {
         return status === "д" || status === "н/б";
@@ -29,33 +26,21 @@ function isBadLesson(lesson, vidType) {
     }
 }
 
-let isLmsBroken = false;
-
+// Новый fetchJSON: при ошибке возвращает null и логирует в терминал
 async function fetchJSON(url, context = "") {
-    // Если LMS уже признана полностью недоступной – сразу кидаем ошибку для перехода на fallback
-    if (isLmsBroken) {
-        throw new Error("LMS_SSL_FAILURE");
-    }
-
     try {
         const res = await fetch(url);
         if (!res.ok) {
-            // Логируем статус ошибки, но не прерываем основной процесс – это сделает вызывающий код
-            const errorMsg = `HTTP ${res.status} при запросе ${context || url}`;
-            console.error(errorMsg);
-            throw new Error(`HTTP_${res.status}`);
+            const errorMsg = `❌ ${context || url} -> HTTP ${res.status}`;
+            logTerminal(errorMsg);
+            return null;
         }
         const json = await res.json();
         return json.data || [];
     } catch (e) {
-        // Сетевые ошибки (нет соединения, SSL и т.п.) помечаем как критический сбой LMS
-        if (e.message === "Failed to fetch" || e.message.includes("SSL") || e.message === "LMS_SSL_FAILURE") {
-            console.error("Network/SSL error detected:", e.message);
-            isLmsBroken = true;
-            throw new Error("LMS_SSL_FAILURE");
-        }
-        // Остальные ошибки (например, HTTP 500) просто пробрасываем дальше – их обработает вызывающий код
-        throw e;
+        // Сетевые ошибки (нет соединения, SSL)
+        logTerminal(`❌ Сетевая ошибка при запросе ${context || url}: ${e.message}`);
+        return null;
     }
 }
 
@@ -73,7 +58,6 @@ document.getElementById("load").onclick = async () => {
 
 async function mainscript() {
     const summary = document.getElementById("summary");
-    const resultBody = document.getElementById("result");
     const login = document.getElementById("login").value.trim();
     const id_ws = document.getElementById("ws").value;
 
@@ -133,14 +117,10 @@ async function mainscript() {
             <div><b>Предмет:</b> ${subject} ${tipZan}</div>
             <div><b>Дата:</b> ${date}</div>
             <div><b>Тема:</b> №${lessonNumber} – ${topic?.trim() || ""}</div>
-            <div>
-                <b>Отметка: <span class="mark ${markClass}">${displayMark}</span></b>
-            </div>
+            <div><b>Отметка: <span class="mark ${markClass}">${displayMark}</span></b></div>
         `;
 
-        if (isSpecial) {
-            card.classList.add("special");
-        }
+        if (isSpecial) card.classList.add("special");
         return card;
     }
 
@@ -161,7 +141,6 @@ async function mainscript() {
         if (specialTailsCount > 0) {
             const specialContainer = document.createElement("div");
             specialContainer.className = "special-container";
-
             const specialSummary = document.createElement("div");
             specialSummary.className = "summary";
             specialSummary.style.display = "block";
@@ -169,15 +148,12 @@ async function mainscript() {
             specialSummary.style.background = "linear-gradient(135deg, #2a332d, #1a231d)";
             specialSummary.style.color = "#8ea890";
             specialSummary.textContent = `Преподы сами закроют ${specialTailsCount} ${tailsWord(specialTailsCount)}`;
-
             const specialGrid = document.createElement("div");
             specialGrid.style.display = "grid";
             specialGrid.style.gridTemplateColumns = "repeat(auto-fill, minmax(320px, 1fr))";
             specialGrid.style.gap = "18px";
             specialGrid.style.marginBottom = "32px";
-
             specialCardsElements.forEach(c => specialGrid.appendChild(c));
-
             specialContainer.appendChild(specialSummary);
             specialContainer.appendChild(specialGrid);
             resultBody.parentNode.insertBefore(specialContainer, resultBody.nextSibling);
@@ -186,50 +162,40 @@ async function mainscript() {
         if (tailsCount === 0) launchConfetti();
     }
 
+    // ---- ОСНОВНАЯ ЛОГИКА ----
     try {
-        isLmsBroken = false;
         logTerminal("Попытка прямого соединения с LMS...");
 
-        // --- КРИТИЧЕСКАЯ ЧАСТЬ (если здесь ошибка – уходим на fallback) ---
+        // 1. Получаем пользователя (критично)
         const user = await fetchJSON(`${BASE}/user?id_user=${id_student}&id_avn=-1&id_role=2`, "user");
+        if (!user) throw new Error("Не удалось получить данные пользователя");
         const id_group = user.id_group;
         logTerminal("Соединение успешно установлено!");
 
+        // 2. Получаем семестр (критично)
         const semesterData = await fetchJSON(`${BASE}/student/semester/?id_year=${ID_YEAR}&id_ws=${id_ws}&id_group=${id_group}&id_student=${id_student}`, "semester");
+        if (!semesterData || semesterData.length === 0) throw new Error("Не удалось получить семестр");
         const id_semester = semesterData[0].id_semester;
 
+        // 3. Получаем дисциплины (критично)
         const disciplines = await fetchJSON(`${BASE}/student/discipline/?id_year=${ID_YEAR}&id_ws=${id_ws}&id_group=${id_group}&id_student=${id_student}&id_semester=${id_semester}`, "disciplines");
+        if (!disciplines) throw new Error("Не удалось получить дисциплины");
 
-        // --- ОСНОВНЫЕ ЦИКЛЫ С ЛОКАЛЬНОЙ ОБРАБОТКОЙ ОШИБОК ---
+        // 4. Проходим по дисциплинам с локальной обработкой ошибок (не критические)
         for (const disc of disciplines) {
-            let vids;
-            try {
-                vids = await fetchJSON(`${BASE}/student/vid-zanyatie?id_year=${ID_YEAR}&id_ws=${id_ws}&id_group=${id_group}&id_student=${id_student}&id_semester=${id_semester}&id_discipline=${disc.id_discipline}`, `vids для дисциплины ${disc.id_discipline}`);
-            } catch (err) {
-                logTerminal(`⚠️ Ошибка при получении видов занятий для дисциплины ${disc.discipline}: ${err.message}`);
-                continue; // пропускаем эту дисциплину
-            }
+            const vids = await fetchJSON(`${BASE}/student/vid-zanyatie?id_year=${ID_YEAR}&id_ws=${id_ws}&id_group=${id_group}&id_student=${id_student}&id_semester=${id_semester}&id_discipline=${disc.id_discipline}`, `виды занятий для ${disc.discipline}`);
+            if (!vids) continue; // ошибка уже залогирована, пропускаем дисциплину
 
             for (const vid of vids) {
                 const cleanDisc = disc.discipline.replace(/\[.*?\]\s*/g, "").replace(/\(крд.*$/g, "").trim();
                 logTerminal(`${cleanDisc} (${vid.vid_zaniatiy})`);
 
-                let teachers;
-                try {
-                    teachers = await fetchJSON(`${BASE}/student/teacher/?id_year=${ID_YEAR}&id_ws=${id_ws}&id_group=${id_group}&id_student=${id_student}&id_discipline=${disc.id_discipline}&id_semester=${id_semester}&id_vid_zaniatiy=${vid.id_vid_zaniatiy}`, `teachers для ${cleanDisc}`);
-                } catch (err) {
-                    logTerminal(`⚠️ Ошибка при получении преподавателей для ${cleanDisc} (${vid.vid_zaniatiy}): ${err.message}`);
-                    continue; // переходим к следующему виду занятий
-                }
+                const teachers = await fetchJSON(`${BASE}/student/teacher/?id_year=${ID_YEAR}&id_ws=${id_ws}&id_group=${id_group}&id_student=${id_student}&id_discipline=${disc.id_discipline}&id_semester=${id_semester}&id_vid_zaniatiy=${vid.id_vid_zaniatiy}`, `преподаватели для ${cleanDisc}`);
+                if (!teachers) continue;
 
                 for (const teacher of teachers) {
-                    let journal;
-                    try {
-                        journal = await fetchJSON(`${BASE}/student/journal?id_year=${ID_YEAR}&id_ws=${id_ws}&id_group=${id_group}&id_student=${id_student}&id_discipline=${disc.id_discipline}&id_vid_zaniatiy=${vid.id_vid_zaniatiy}&id_semester=${id_semester}&id_teacher=${teacher.id_teacher}`, `journal для ${cleanDisc}`);
-                    } catch (err) {
-                        logTerminal(`⚠️ Ошибка при получении журнала для ${cleanDisc} (преподаватель ${teacher.id_teacher}): ${err.message}`);
-                        continue; // переходим к следующему преподавателю
-                    }
+                    const journal = await fetchJSON(`${BASE}/student/journal?id_year=${ID_YEAR}&id_ws=${id_ws}&id_group=${id_group}&id_student=${id_student}&id_discipline=${disc.id_discipline}&id_vid_zaniatiy=${vid.id_vid_zaniatiy}&id_semester=${id_semester}&id_teacher=${teacher.id_teacher}`, `журнал для ${cleanDisc}`);
+                    if (!journal) continue;
 
                     let localCounter = 0;
                     for (const lesson of journal) {
@@ -252,49 +218,36 @@ async function mainscript() {
 
         finalizeResults();
 
-    } catch (e) {
-        // Критическая ошибка (LMS полностью недоступна или не получены базовые данные)
-        if (e.message === "LMS_SSL_FAILURE" || e.message.includes("fetch") || e.message.includes("HTTP_")) {
-            logTerminal("Критическая ошибка соединения с LMS!");
-            logTerminal("Перенаправление трафика на защищенный прокси-сервер...");
-            logTerminal("Соединение с Vercel установлено успешно!");
-            logTerminal("Ожидание данных от прокси-сервера...");
-            try {
-                const res = await fetch(`${FALLBACK_BASE}/run?login=${login}&id_ws=${id_ws}`);
-                if (!res.ok) throw new Error("Не удалось установить защищенное соединение.");
-
-                const json = await res.json();
-                const id_groupFallback = json.id_group || "";
-
-                json.data.forEach(item => {
-                    const markVal = String(item.mark).toLowerCase();
-                    const isSpecial = checkSpecial(id_groupFallback, item.subject, markVal);
-                    if (isSpecial) {
-                        specialTailsCount++;
-                        specialCardsElements.push(createCard(item.subject, item.type, item.lesson_number, item.date, item.topic, item.mark, true));
-                    } else {
-                        tailsCount++;
-                        resultBody.appendChild(createCard(item.subject, item.type, item.lesson_number, item.date, item.topic, item.mark, false));
-                    }
-                });
-
-                finalizeResults();
-                return;
-            } catch (err) {
-                logTerminal("Критическая ошибка: " + err.message);
-                alert("Не удалось загрузить данные ни через LMS, ни через прокси. Проверьте соединение.");
-            }
-        } else {
-            // Неизвестная ошибка
-            console.error(e);
-            logTerminal("!!! НЕИЗВЕСТНАЯ ОШИБКА !!!");
-            logTerminal(e.message || String(e));
-            alert("Ошибка: " + (e.message || "Unknown error"));
+    } catch (err) {
+        // Критическая ошибка (не удалось получить пользователя, семестр или дисциплины) – используем fallback
+        logTerminal("Критическая ошибка при доступе к LMS: " + err.message);
+        logTerminal("Переключение на резервный прокси-сервер...");
+        try {
+            const res = await fetch(`${FALLBACK_BASE}/run?login=${login}&id_ws=${id_ws}`);
+            if (!res.ok) throw new Error("Прокси вернул ошибку " + res.status);
+            const json = await res.json();
+            const id_groupFallback = json.id_group || "";
+            json.data.forEach(item => {
+                const markVal = String(item.mark).toLowerCase();
+                const isSpecial = checkSpecial(id_groupFallback, item.subject, markVal);
+                if (isSpecial) {
+                    specialTailsCount++;
+                    specialCardsElements.push(createCard(item.subject, item.type, item.lesson_number, item.date, item.topic, item.mark, true));
+                } else {
+                    tailsCount++;
+                    resultBody.appendChild(createCard(item.subject, item.type, item.lesson_number, item.date, item.topic, item.mark, false));
+                }
+            });
+            finalizeResults();
+        } catch (fallbackErr) {
+            logTerminal("Резервный прокси тоже не сработал: " + fallbackErr.message);
+            alert("Не удалось загрузить данные ни через LMS, ни через прокси. Проверьте соединение.");
+            loader.style.display = "none";
         }
     }
 }
 
-// --- Вспомогательные функции (куки, терминал, конфетти) ---
+// --- Куки, терминал, конфетти (без изменений) ---
 function getCookie(name) {
     const value = `; ${document.cookie}`;
     const parts = value.split(`; ${name}=`);
@@ -309,29 +262,16 @@ function setCookie(name, value, days) {
 
 window.addEventListener('DOMContentLoaded', () => {
     const savedLogin = getCookie('avn_login');
-    if (savedLogin) {
-        loginInput.value = savedLogin;
-    }
+    if (savedLogin) loginInput.value = savedLogin;
 });
 
 loadButton.addEventListener('click', () => {
     const login = loginInput.value.trim();
-    if (login) {
-        setCookie('avn_login', login, 30);
-    }
+    if (login) setCookie('avn_login', login, 30);
 });
 
 const loader = document.getElementById("loader");
 const terminal = document.getElementById("terminal");
-
-function showLoader() {
-    terminal.innerHTML = "";
-    loader.classList.remove("hidden");
-}
-
-function hideLoader() {
-    loader.classList.add("hidden");
-}
 
 function logTerminal(text) {
     const line = document.createElement("div");
@@ -342,25 +282,10 @@ function logTerminal(text) {
 }
 
 function launchConfetti() {
-    const end = Date.now() + 2 * 1000;
-    let colors;
+    const end = Date.now() + 2000;
     (function frame() {
-        confetti({
-            particleCount: 2,
-            angle: 60,
-            spread: 55,
-            origin: { x: 0 },
-            colors: colors,
-        });
-        confetti({
-            particleCount: 2,
-            angle: 120,
-            spread: 55,
-            origin: { x: 1 },
-            colors: colors,
-        });
-        if (Date.now() < end) {
-            requestAnimationFrame(frame);
-        }
+        confetti({ particleCount: 2, angle: 60, spread: 55, origin: { x: 0 } });
+        confetti({ particleCount: 2, angle: 120, spread: 55, origin: { x: 1 } });
+        if (Date.now() < end) requestAnimationFrame(frame);
     })();
 }
