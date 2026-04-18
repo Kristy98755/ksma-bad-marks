@@ -207,36 +207,41 @@ async function mainscript() {
 
 		const disciplines = await fetchJSON(`${BASE}/student/discipline/?id_year=${ID_YEAR}&id_ws=${id_ws}&id_group=${id_group}&id_student=${id_student}&id_semester=${id_semester}`);
 
-		for (const disc of disciplines) {
-			const vids = await fetchJSON(`${BASE}/student/vid-zanyatie?id_year=${ID_YEAR}&id_ws=${id_ws}&id_group=${id_group}&id_student=${id_student}&id_semester=${id_semester}&id_discipline=${disc.id_discipline}`);
+		await Promise.all(disciplines.map(async (disc) => {
+			try {
+				const vids = await fetchJSON(`${BASE}/student/vid-zanyatie?id_year=${ID_YEAR}&id_ws=${id_ws}&id_group=${id_group}&id_student=${id_student}&id_semester=${id_semester}&id_discipline=${disc.id_discipline}`);
 
-			for (const vid of vids) {
-				const cleanDisc = disc.discipline.replace(/\[.*?\]\s*/g, "").replace(/\(крд.*$/g, "").trim();
-				logTerminal(`${cleanDisc} (${vid.vid_zaniatiy})`);
+				await Promise.all(vids.map(async (vid) => {
+					const cleanDisc = disc.discipline.replace(/\[.*?\]\s*/g, "").replace(/\(крд.*$/g, "").trim();
+					logTerminal(`${cleanDisc} (${vid.vid_zaniatiy})`);
 
-				const teachers = await fetchJSON(`${BASE}/student/teacher/?id_year=${ID_YEAR}&id_ws=${id_ws}&id_group=${id_group}&id_student=${id_student}&id_discipline=${disc.id_discipline}&id_semester=${id_semester}&id_vid_zaniatiy=${vid.id_vid_zaniatiy}`);
+					const teachers = await fetchJSON(`${BASE}/student/teacher/?id_year=${ID_YEAR}&id_ws=${id_ws}&id_group=${id_group}&id_student=${id_student}&id_discipline=${disc.id_discipline}&id_semester=${id_semester}&id_vid_zaniatiy=${vid.id_vid_zaniatiy}`);
 
-				for (const teacher of teachers) {
-					const journal = await fetchJSON(`${BASE}/student/journal?id_year=${ID_YEAR}&id_ws=${id_ws}&id_group=${id_group}&id_student=${id_student}&id_discipline=${disc.id_discipline}&id_vid_zaniatiy=${vid.id_vid_zaniatiy}&id_semester=${id_semester}&id_teacher=${teacher.id_teacher}`);
-					
-					let localCounter = 0;
-					for (const lesson of journal) {
-						localCounter++;
-						if (isBadLesson(lesson, vid.vid_zaniatiy)) {
-							const markVal = String(lesson.otsenka || lesson.otsenka_ball).toLowerCase();
-							const isSpecial = checkSpecial(id_group, cleanDisc, markVal);
-							if (isSpecial) {
-								specialTailsCount++;
-								specialCardsElements.push(createCard(cleanDisc, vid.vid_zaniatiy, localCounter, lesson.visitDate, lesson.lesson_topic, lesson.otsenka || lesson.otsenka_ball, true));
-							} else {
-								tailsCount++;
-								resultBody.appendChild(createCard(cleanDisc, vid.vid_zaniatiy, localCounter, lesson.visitDate, lesson.lesson_topic, lesson.otsenka || lesson.otsenka_ball, false));
+					await Promise.all(teachers.map(async (teacher) => {
+						const journal = await fetchJSON(`${BASE}/student/journal?id_year=${ID_YEAR}&id_ws=${id_ws}&id_group=${id_group}&id_student=${id_student}&id_discipline=${disc.id_discipline}&id_vid_zaniatiy=${vid.id_vid_zaniatiy}&id_semester=${id_semester}&id_teacher=${teacher.id_teacher}`);
+						
+						let localCounter = 0;
+						for (const lesson of journal) {
+							localCounter++;
+							if (isBadLesson(lesson, vid.vid_zaniatiy)) {
+								const markVal = String(lesson.otsenka || lesson.otsenka_ball).toLowerCase();
+								const isSpecial = checkSpecial(id_group, cleanDisc, markVal);
+								if (isSpecial) {
+									specialTailsCount++;
+									specialCardsElements.push(createCard(cleanDisc, vid.vid_zaniatiy, localCounter, lesson.visitDate, lesson.lesson_topic, lesson.otsenka || lesson.otsenka_ball, true));
+								} else {
+									tailsCount++;
+									resultBody.appendChild(createCard(cleanDisc, vid.vid_zaniatiy, localCounter, lesson.visitDate, lesson.lesson_topic, lesson.otsenka || lesson.otsenka_ball, false));
+								}
 							}
 						}
-					}
-				}
+					}));
+				}));
+			} catch (err) {
+				console.error(`Error fetching data for discipline ${disc.discipline}:`, err);
+				logTerminal(`Ошибка загрузки: ${disc.discipline}`);
 			}
-		}
+		}));
         
 
         // --- ФИНАЛИЗАЦИЯ ---
