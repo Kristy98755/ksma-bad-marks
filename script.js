@@ -106,7 +106,8 @@ async function mainscript() {
 	summary.style.display = "none";
 	let tailsCount = 0;
 	let specialTailsCount = 0;
-	const specialCardsElements = [];
+	const tailsData = [];
+	const specialData = [];
 
 	// --- Вспомогательные функции (Твои оригинальные) ---
 	function tailsWord(n) {
@@ -164,6 +165,15 @@ async function mainscript() {
 		resultBody.style.display = "grid";
 		summary.style.color = tailsCount === 0 ? "#fff" : "#ff6b6b";
 
+		// Сортировка по алфавиту
+		tailsData.sort((a, b) => a.subject.localeCompare(b.subject));
+		specialData.sort((a, b) => a.subject.localeCompare(b.subject));
+
+		// Отрисовка обычных хвостов
+		tailsData.forEach(t => {
+			resultBody.appendChild(createCard(t.subject, t.teacher, t.type, t.lessonNumber, t.date, t.topic, t.mark, false));
+		});
+
 		if (specialTailsCount > 0) {
 			const specialContainer = document.createElement("div");
 			specialContainer.className = "special-container";
@@ -182,7 +192,10 @@ async function mainscript() {
 			specialGrid.style.gap = "18px";
 			specialGrid.style.marginBottom = "32px";
 
-			specialCardsElements.forEach(c => specialGrid.appendChild(c));
+			// Отрисовка специальных хвостов
+			specialData.forEach(t => {
+				specialGrid.appendChild(createCard(t.subject, t.teacher, t.type, t.lessonNumber, t.date, t.topic, t.mark, true));
+			});
 
 			specialContainer.appendChild(specialSummary);
 			specialContainer.appendChild(specialGrid);
@@ -229,10 +242,10 @@ async function mainscript() {
 								const isSpecial = checkSpecial(id_group, cleanDisc, markVal);
 								if (isSpecial) {
 									specialTailsCount++;
-									specialCardsElements.push(createCard(cleanDisc, teacher.t_fio, vid.vid_zaniatiy, localCounter, lesson.visitDate, lesson.lesson_topic, lesson.otsenka || lesson.otsenka_ball, true));
+									specialData.push({ subject: cleanDisc, teacher: teacher.t_fio, type: vid.vid_zaniatiy, lessonNumber: localCounter, date: lesson.visitDate, topic: lesson.lesson_topic, mark: lesson.otsenka || lesson.otsenka_ball });
 								} else {
 									tailsCount++;
-									resultBody.appendChild(createCard(cleanDisc, teacher.t_fio, vid.vid_zaniatiy, localCounter, lesson.visitDate, lesson.lesson_topic, lesson.otsenka || lesson.otsenka_ball, false));
+									tailsData.push({ subject: cleanDisc, teacher: teacher.t_fio, type: vid.vid_zaniatiy, lessonNumber: localCounter, date: lesson.visitDate, topic: lesson.lesson_topic, mark: lesson.otsenka || lesson.otsenka_ball });
 								}
 							}
 						}
@@ -267,10 +280,10 @@ async function mainscript() {
 					const isSpecial = checkSpecial(id_groupFallback, item.subject, markVal);
 					if (isSpecial) {
 						specialTailsCount++;
-						specialCardsElements.push(createCard(item.subject, item.type, item.lesson_number, item.date, item.topic, item.mark, true));
+						specialData.push({ subject: item.subject, teacher: item.teacher || "N/A", type: item.type, lessonNumber: item.lesson_number, date: item.date, topic: item.topic, mark: item.mark });
 					} else {
 						tailsCount++;
-						resultBody.appendChild(createCard(item.subject, item.type, item.lesson_number, item.date, item.topic, item.mark, false));
+						tailsData.push({ subject: item.subject, teacher: item.teacher || "N/A", type: item.type, lessonNumber: item.lesson_number, date: item.date, topic: item.topic, mark: item.mark });
 					}
 				});
 
