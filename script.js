@@ -123,7 +123,7 @@ async function mainscript() {
 		return true;
 	}
 
-	function createCard(subject, type, lessonNumber, date, topic, mark, isSpecial) {
+	function createCard(subject, teacher, type, lessonNumber, date, topic, mark, isSpecial) {
 		const card = document.createElement("div");
 		card.className = "card";
 		const displayMark = mark && mark !== "" ? mark : "—";
@@ -135,6 +135,7 @@ async function mainscript() {
 
 		card.innerHTML = `
             <div><b>Предмет:</b> ${subject} ${tipZan}</div>
+            <div><b>Препод:</b> ${teacher || "Не указан"}</div>
             <div><b>Дата:</b> ${date}</div>
             <div><b>Тема:</b> №${lessonNumber} – ${topic?.trim() || ""}</div>
             <div>
@@ -228,10 +229,10 @@ async function mainscript() {
 								const isSpecial = checkSpecial(id_group, cleanDisc, markVal);
 								if (isSpecial) {
 									specialTailsCount++;
-									specialCardsElements.push(createCard(cleanDisc, vid.vid_zaniatiy, localCounter, lesson.visitDate, lesson.lesson_topic, lesson.otsenka || lesson.otsenka_ball, true));
+									specialCardsElements.push(createCard(cleanDisc, teacher.t_fio, vid.vid_zaniatiy, localCounter, lesson.visitDate, lesson.lesson_topic, lesson.otsenka || lesson.otsenka_ball, true));
 								} else {
 									tailsCount++;
-									resultBody.appendChild(createCard(cleanDisc, vid.vid_zaniatiy, localCounter, lesson.visitDate, lesson.lesson_topic, lesson.otsenka || lesson.otsenka_ball, false));
+									resultBody.appendChild(createCard(cleanDisc, teacher.t_fio, vid.vid_zaniatiy, localCounter, lesson.visitDate, lesson.lesson_topic, lesson.otsenka || lesson.otsenka_ball, false));
 								}
 							}
 						}
