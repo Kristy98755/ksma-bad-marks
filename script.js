@@ -2,7 +2,7 @@ const BASE = "https://lms.kgma.kg/vm/api";
 const FALLBACK_BASE = "https://ksma-bad-marks.vercel.app/api/proxy";
 
 
-const ID_YEAR = 25;
+const ID_YEAR = 26;
 let cleanDisc;
 const resultBody = document.getElementById("result");
 // кнопка запускает функцию loadData()
