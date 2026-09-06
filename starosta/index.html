@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ꜱᴛᴀʀᴏꜱᴛᴀ</title>
+    <link rel="icon" href="chip.ico">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Courier+Prime:wght@400;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body class="hacker-theme">
+    <header>
+        <div class="header-content">
+            <div class="top-bar">
+                <h1 id="title">ꜱᴛᴀʀᴏꜱᴛᴀ // GROUP JOURNAL</h1>
+                <div id="status-container">
+                    <span id="led" class="led led-waiting"></span>
+                    <div id="status-line" class="mini-terminal">Waiting for input...</div>
+                </div>
+            </div>
+            <div class="controls">
+                <div class="control-group">
+                    <label for="ws">Полугодие:</label>
+                    <select id="ws">
+                        <option value="2" selected>Осеннее</option>
+                        <option value="1">Весеннее</option>
+                    </select>
+                </div>
+                <div class="control-group">
+                    <select id="subject">
+                        <option value="" disabled selected>Предмет...</option>
+                    </select>
+                </div>
+                <div class="control-group">
+                    <select id="module" class="hidden">
+                        <option value="" disabled selected>Модуль...</option>
+                    </select>
+                </div>
+                <div class="control-group">
+                    <select id="type" disabled>
+                        <option value="" disabled selected>Тип...</option>
+                    </select>
+                </div>
+                <div class="control-group">
+                    <select id="teacher" disabled>
+                        <option value="" disabled selected>Препод...</option>
+                    </select>
+                </div>
+                <div class="control-group">
+                    <button id="tails-btn" class="btn-tails">Хвосты</button>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <main>
+        <div id="status"></div>
+        <div id="table-wrap">
+            <table id="matrix"></table>
+        </div>
+    </main>
+
+    <div id="topic-tip" class="hidden"></div>
+    <div id="topic-popup" class="hidden">
+        <div class="topic-popup-box">
+            <div class="topic-popup-head">
+                <span id="topic-popup-date"></span>
+                <span id="topic-popup-close" class="topic-popup-close">×</span>
+            </div>
+            <div id="topic-popup-body" class="topic-popup-body"></div>
+        </div>
+    </div>
+
+    <div id="modal-overlay" class="hidden">
+        <div class="modal">
+            <h3>EDIT DATA</h3>
+            <button id="close-modal" class="modal-close">&times;</button>
+            <div class="modal-mark-selector">
+                <label for="modal-mark">NEW MARK:</label>
+                <select id="modal-mark"></select>
+            </div>
+            <div id="modal-details"></div>
+            <div class="modal-actions">
+                <button id="save-mark" class="btn-cyan">SEND PUT</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="tails-overlay" class="hidden"></div>
+    <aside id="tails-panel" class="tails-panel">
+        <div class="tails-header">
+            <h2>ХВОСТЫ</h2>
+            <button id="tails-refresh" title="Обновить">&#x21bb;</button>
+            <button id="tails-close" class="tails-close">&times;</button>
+        </div>
+        <div id="tails-list"></div>
+    </aside>
+
+    <script src="app.js"></script>
+</body>
+</html>
