@@ -134,6 +134,37 @@ main { max-width: 1600px; margin: 150px auto 40px auto; padding: 20px; }
     user-select: none;
 }
 
+#table-loader {
+    display: flex; flex-direction: column; align-items: center; gap: 14px;
+    padding: 45px 20px;
+}
+.loader-spinner {
+    width: 46px; height: 46px;
+    border: 2px solid rgba(0, 255, 255, 0.12);
+    border-top-color: var(--cyan);
+    border-right-color: var(--cyan);
+    border-radius: 50%;
+    animation: loader-spin 0.9s linear infinite;
+    box-shadow: 0 0 15px rgba(0, 255, 255, 0.35), inset 0 0 10px rgba(0, 255, 255, 0.15);
+}
+@keyframes loader-spin { to { transform: rotate(360deg); } }
+.loader-text {
+    color: var(--cyan); font-size: 0.85rem; letter-spacing: 2px;
+    text-transform: uppercase; text-shadow: 0 0 8px rgba(0, 255, 255, 0.6);
+    animation: loader-blink 1.2s steps(2) infinite;
+}
+@keyframes loader-blink { 50% { opacity: 0.35; } }
+.loader-bar {
+    width: 220px; height: 4px; background: rgba(0, 255, 255, 0.1);
+    overflow: hidden; position: relative;
+}
+.loader-bar span {
+    position: absolute; left: -40%; width: 40%; height: 100%;
+    background: var(--cyan); box-shadow: 0 0 10px var(--cyan);
+    animation: loader-slide 1s ease-in-out infinite;
+}
+@keyframes loader-slide { to { left: 100%; } }
+
 table {
     border-collapse: collapse;
     background: transparent;
@@ -166,6 +197,10 @@ thead th.date-head { cursor: pointer; }
     position: sticky; left: 0;
     background: rgba(10, 10, 10, 0.85);
     min-width: 220px;
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+    touch-action: manipulation;
 }
 .fio-cell:hover { text-shadow: 0 0 8px var(--cyan); }
 .fio-sub {

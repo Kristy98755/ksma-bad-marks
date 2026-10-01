@@ -14,7 +14,8 @@ const ID_YEAR = 26;
 // Хардкод группы (логины студентов)
 const STUDENTS = [
     "1-61766", "1-61691", "1-62447", "1-69639", "1-61690",
-    "1-66675", "1-62408", "1-61552", "1-70060", "1-61709"
+    "1-66675", "1-62408", "1-61552", "1-70060", "1-61709",
+    "1-73348", "1-66571", "1-66601"
 ];
 
 const els = {
@@ -66,6 +67,15 @@ function setLed(stateType) {
     els.led.className = "led led-" + stateType;
 }
 
+// Лоадер на время сбора таблицы: прячет матрицу, показывает спиннер
+function setLoader(show, text) {
+    const box = document.getElementById("table-loader");
+    if (!box) return;
+    if (text) document.getElementById("loader-text").textContent = text;
+    box.classList.toggle("hidden", !show);
+    els.table.classList.toggle("hidden", show);
+}
+
 function parseBaseName(disc) {
     const m = disc.discipline.match(/^\[(.*?)\]\s*(.*)/);
     let tag = m ? `[${m[1]}]` : "";
@@ -97,7 +107,13 @@ function parseDate(d) {
     return 0;
 }
 
-// --- копирование (тап = ФИО, удержание = логин) -----------------------------
+// --- копирование (только логин) --------------------------------------------
+// ПК: удержание 0.5 с. Мобайл (coarse pointer): удержание 2 с.
+// Тап и короткое удержание ничего не копируют (ФИО убрано везде).
+const IS_TOUCH_UI = !!(window.matchMedia &&
+    window.matchMedia("(hover: none) and (pointer: coarse)").matches);
+const HOLD_MS = IS_TOUCH_UI ? 2000 : 500;
+
 function copyText(t) {
     const done = () => flash("Скопировано: " + t);
     if (navigator.clipboard && window.isSecureContext) {
@@ -120,17 +136,30 @@ function flash(msg) {
     flashTimer = setTimeout(() => setStatus("Готово.", "info"), 1500);
 }
 
-function attachCopy(cell, fio, login) {
-    let timer = null, longp = false;
-    const start = () => { longp = false; timer = setTimeout(() => { longp = true; copyText(login); }, 500); };
-    const end = () => { if (timer) { clearTimeout(timer); timer = null; if (!longp) copyText(fio); } };
-    const cancel = () => { if (timer) { clearTimeout(timer); timer = null; } };
-    cell.addEventListener("mousedown", start);
-    cell.addEventListener("mouseup", end);
-    cell.addEventListener("mouseleave", cancel);
-    cell.addEventListener("touchstart", start, { passive: true });
-    cell.addEventListener("touchend", end);
-    cell.addEventListener("touchcancel", cancel);
+function attachCopy(cell, login) {
+    let timer = null;
+    let startX = 0, startY = 0;
+
+    const clear = () => { if (timer) { clearTimeout(timer); timer = null; } };
+    const start = (x, y) => {
+        startX = x; startY = y;
+        clear();
+        timer = setTimeout(() => { timer = null; copyText(login); }, HOLD_MS);
+    };
+    // скролл/перетаскивание отменяют удержание
+    const move = (x, y) => {
+        if (timer && Math.hypot(x - startX, y - startY) > 10) clear();
+    };
+
+    cell.addEventListener("mousedown", e => start(e.clientX, e.clientY));
+    cell.addEventListener("mousemove", e => move(e.clientX, e.clientY));
+    cell.addEventListener("mouseup", clear);
+    cell.addEventListener("mouseleave", clear);
+
+    cell.addEventListener("touchstart", e => { const t = e.touches[0]; start(t.clientX, t.clientY); }, { passive: true });
+    cell.addEventListener("touchmove", e => { const t = e.touches[0]; move(t.clientX, t.clientY); }, { passive: true });
+    cell.addEventListener("touchend", clear);
+    cell.addEventListener("touchcancel", clear);
 }
 
 // --- дерево выбора ---------------------------------------------------------
@@ -229,42 +258,49 @@ async function buildMatrix() {
 
     setLed("busy");
     setStatus("Сбор журнала по группе...");
+    setLoader(true, `СБОР ЖУРНАЛА: 0/${STUDENTS.length}`);
 
-    const rows = [];          // { login, fio, map: Map<date, mark> }
-    const colMap = new Map(); // date -> topic
+    try {
+        const rows = [];          // { login, fio, map: Map<date, mark> }
+        const colMap = new Map(); // date -> topic
 
-    for (const login of STUDENTS) {
-        const id = login.split("-")[1];
-        const user = await fetchJSON(`${BASE}/user?id_user=${id}&id_avn=-1&id_role=2`);
-        const fio = `${user.surname} ${user.name} ${user.patronymic}`.trim();
+        for (let i = 0; i < STUDENTS.length; i++) {
+            const login = STUDENTS[i];
+            setLoader(true, `СБОР ЖУРНАЛА: ${i + 1}/${STUDENTS.length}`);
+            const id = login.split("-")[1];
+            const user = await fetchJSON(`${BASE}/user?id_user=${id}&id_avn=-1&id_role=2`);
+            const fio = `${user.surname} ${user.name} ${user.patronymic}`.trim();
 
-        const journal = await fetchJSON(
-            `${BASE}/student/journal/?id_year=${ID_YEAR}&id_ws=${state.ws}&id_group=${state.id_group}` +
-            `&id_student=${id}&id_discipline=${state.id_discipline}&id_vid_zaniatiy=${state.id_vid}` +
-            `&id_semester=${state.id_semester}&id_teacher=${state.id_teacher}`
-        );
+            const journal = await fetchJSON(
+                `${BASE}/student/journal/?id_year=${ID_YEAR}&id_ws=${state.ws}&id_group=${state.id_group}` +
+                `&id_student=${id}&id_discipline=${state.id_discipline}&id_vid_zaniatiy=${state.id_vid}` +
+                `&id_semester=${state.id_semester}&id_teacher=${state.id_teacher}`
+            );
 
-        const map = new Map();
-        const rawMap = new Map();
-        for (const j of journal) {
-            const date = j.visitDate;
-            const mark = normalizeMark(j);
-            map.set(date, mark);
-            rawMap.set(date, j);
-            if (!colMap.has(date)) colMap.set(date, (j.lesson_topic || "").trim());
+            const map = new Map();
+            const rawMap = new Map();
+            for (const j of journal) {
+                const date = j.visitDate;
+                const mark = normalizeMark(j);
+                map.set(date, mark);
+                rawMap.set(date, j);
+                if (!colMap.has(date)) colMap.set(date, (j.lesson_topic || "").trim());
+            }
+            rows.push({ login, fio, map, rawMap });
         }
-        rows.push({ login, fio, map, rawMap });
+
+        // колонки по дате (хронологически)
+        const columns = [...colMap.entries()].sort((a, b) => parseDate(a[0]) - parseDate(b[0]));
+        state.columns = columns;
+        // строки по алфавиту ФИО
+        rows.sort((a, b) => a.fio.localeCompare(b.fio, "ru"));
+
+        renderTable(columns, rows);
+        setStatus(`Готово: ${rows.length} студентов, ${columns.length} занятий.`, "ok");
+        setLed("ready");
+    } finally {
+        setLoader(false);
     }
-
-    // колонки по дате (хронологически)
-    const columns = [...colMap.entries()].sort((a, b) => parseDate(a[0]) - parseDate(b[0]));
-    state.columns = columns;
-    // строки по алфавиту ФИО
-    rows.sort((a, b) => a.fio.localeCompare(b.fio, "ru"));
-
-    renderTable(columns, rows);
-    setStatus(`Готово: ${rows.length} студентов, ${columns.length} занятий.`, "ok");
-    setLed("ready");
 }
 
 function firstTwoWords(s) {
@@ -308,7 +344,7 @@ function renderTable(columns, rows) {
         const tdFio = document.createElement("td");
         tdFio.className = "fio-cell";
         tdFio.innerHTML = `${r.fio}<span class="fio-sub">${r.login}</span>`;
-        attachCopy(tdFio, r.fio, r.login);
+        attachCopy(tdFio, r.login);
         tr.appendChild(tdFio);
 
         columns.forEach(([date], colIdx) => {
