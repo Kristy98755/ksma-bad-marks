@@ -94,8 +94,22 @@ function normalizeMark(j) {
     return "—";
 }
 
+// Приводит отметку к «нехорошему» виду: "1", "2", "нб", "нб3", "д".
+// Парсим всё как разное: "н/б", "нб" -> "нб"; "н/б 3", "нб 3", "нб3" -> "нб3";
+// "д"/"допущен" -> "д"; цифры с пробелами. Всё прочее (3/4/5/—/пусто) -> null.
+// Для фильтра (isBad) "нб3" равноценен "нб" — оба считаются нехорошими.
+function normalizeBadKind(raw) {
+    const s = String(raw == null ? "" : raw).toLowerCase().replace(/\s+/g, " ").trim();
+    if (s === "1") return "1";
+    if (s === "2") return "2";
+    if (/^н\/?б\s*3/.test(s)) return "нб3";
+    if (/^н\/?б/.test(s)) return "нб";
+    if (s === "д" || /^допущен/.test(s)) return "д";
+    return null;
+}
+
 function isBad(mark) {
-    return ["1", "2", "н/б", "нб", "д"].includes(String(mark).toLowerCase());
+    return normalizeBadKind(mark) !== null;
 }
 
 function parseDate(d) {
@@ -584,20 +598,20 @@ function escapeHtml(s) {
 }
 
 function classifyLesson(lesson, vidType) {
-    const mark = String(lesson.otsenka_ball);
-    const status = String(lesson.otsenka || "").toLowerCase();
-    const attempt = lesson.attempt;
+    // берём ту же отметку, что показывает матрица (otsenka приоритетнее балла)
+    const raw = lesson.otsenka || lesson.otsenka_ball;
+    const attempt = Number(lesson.attempt);
     if (attempt === 2 || attempt === 3) return null; // уже отработано
+
+    const kind = normalizeBadKind(raw);
+    if (!kind) return null;
+
+    // лекции: только "нб"/"нб3"/"д" (как в движке ksma-bad-marks)
     if (vidType === "Лекционный") {
-        if (status === "д" || status === "н/б") return (status === "нб") ? "нб" : "д";
-        return null;
+        return (kind === "нб" || kind === "нб3" || kind === "д") ? kind : null;
     }
-    if (mark === "1" || mark === "2" || status === "д" || status === "н/б") {
-        if (mark === "1") return "1";
-        if (mark === "2") return "2";
-        return (status === "нб") ? "нб" : "д";
-    }
-    return null;
+    // практика и всё остальное: 1, 2, нб, д
+    return kind;
 }
 
 // Полное дерево параллельных запросов для одного студента (как в ksma-bad-marks)
@@ -606,9 +620,9 @@ async function fetchStudentDebts(idStudent) {
     const id_semester = state.id_semester;
     const disciplines = await fetchJSON(`${BASE}/student/discipline/?id_year=${ID_YEAR}&id_ws=${state.ws}&id_group=${id_group}&id_student=${idStudent}&id_semester=${id_semester}`);
     const result = {
-        total: { "2": 0, "1": 0, "нб": 0, "д": 0 },
-        practice: { "2": 0, "1": 0, "нб": 0, "д": 0 },
-        lecture: { "2": 0, "1": 0, "нб": 0, "д": 0 },
+        total: { "2": 0, "1": 0, "нб": 0, "нб3": 0, "д": 0 },
+        practice: { "2": 0, "1": 0, "нб": 0, "нб3": 0, "д": 0 },
+        lecture: { "2": 0, "1": 0, "нб": 0, "нб3": 0, "д": 0 },
         cards: []
     };
     await Promise.all(disciplines.map(async (disc) => {
@@ -640,28 +654,37 @@ async function fetchStudentDebts(idStudent) {
     return result;
 }
 
+// столбик строк счётчика: «2» – N / «1» – N / «нб» – N / «д» – N
+// в счётчике "нб" и "нб3" складываются в одну строку «нб»;
+// нулевые, null и отсутствующие значения не выводятся
+const TAIL_ROWS = [
+    ["«2»", ["2"]],
+    ["«1»", ["1"]],
+    ["«нб»", ["нб", "нб3"]],
+    ["«д»", ["д"]]
+];
+
+function countLines(obj) {
+    return TAIL_ROWS
+        .map(([label, keys]) => [label, keys.reduce((sum, k) => sum + (Number(obj ? obj[k] : null) || 0), 0)])
+        .filter(([, n]) => n > 0)
+        .map(([label, n]) => `${label} – ${n}`);
+}
+
 function renderCounts(obj) {
-    const parts = [];
-    if (obj["2"]) parts.push(`"2": ${obj["2"]}`);
-    if (obj["1"]) parts.push(`"1": ${obj["1"]}`);
-    if (obj["нб"]) parts.push(`н/б: ${obj["нб"]}`);
-    if (obj["д"]) parts.push(`д: ${obj["д"]}`);
-    return parts.length ? parts.join("   ") : "—";
+    const lines = countLines(obj);
+    return lines.length ? lines.join("<br>") : "—";
 }
 
 function buildTailsRow(label, obj) {
-    const parts = [];
-    if (obj["2"]) parts.push(`"2": ${obj["2"]}`);
-    if (obj["1"]) parts.push(`"1": ${obj["1"]}`);
-    if (obj["нб"]) parts.push(`н/б: ${obj["нб"]}`);
-    if (obj["д"]) parts.push(`д: ${obj["д"]}`);
-    if (!parts.length) return "";
-    return `<div class="tails-row"><span class="tails-row-label">${label}:</span> ${parts.join("   ")}</div>`;
+    const lines = countLines(obj);
+    if (!lines.length) return "";
+    return `<div class="tails-row"><span class="tails-row-label">${label}:</span><div class="tails-counts">${lines.join("<br>")}</div></div>`;
 }
 
 function cardHtml(c) {
     const displayMark = c.mark && c.mark !== "" ? c.mark : "—";
-    const markClass = (c.kind === "1" || c.kind === "2" || c.kind === "нб" || c.kind === "д") ? "bad" : "warn";
+    const markClass = isBad(c.kind) ? "bad" : "warn";
     const tip = c.type === "Практический" ? "(практ.)" : (c.type === "Лекционный" ? "(лекц.)" : "");
     return `<div class="tails-card">
         <div><b>Предмет:</b> ${escapeHtml(c.subject)} ${tip}</div>

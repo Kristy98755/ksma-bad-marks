@@ -370,11 +370,12 @@ td.mark-cell { color: var(--cyan); font-weight: bold; font-size: 16.5px; }
 .tails-item-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 10px 12px; cursor: pointer; }
 .tails-item-head:hover { background: rgba(0, 255, 255, 0.06); }
 .tails-fio { color: var(--cyan); font-weight: bold; }
-.tails-summary { color: var(--text); font-size: 0.85rem; }
+.tails-summary { color: var(--text); font-size: 0.85rem; text-align: right; line-height: 1.4; flex-shrink: 0; }
 .tails-item.loading .tails-fio::after { content: " …"; color: var(--cyan-dim); }
 .tails-detail { padding: 10px 12px; border-top: 1px solid var(--border); background: rgba(0, 0, 0, 0.2); }
 .tails-row { margin-bottom: 6px; color: var(--text); font-size: 0.85rem; }
-.tails-row-label { color: var(--cyan-dim); }
+.tails-row-label { color: var(--cyan-dim); display: block; }
+.tails-counts { display: block; margin-top: 2px; }
 .tails-none { color: #0f0; padding: 8px 0; text-shadow: 0 0 6px rgba(0,255,0,0.4); }
 .tails-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 10px; margin-top: 8px; }
 .tails-card { border: 1px solid var(--border); border-radius: 6px; padding: 10px; background: rgba(0, 0, 0, 0.45); font-size: 0.78rem; line-height: 1.45; }
