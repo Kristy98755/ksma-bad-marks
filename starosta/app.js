@@ -37,7 +37,8 @@ const els = {
     tailsOverlay: document.getElementById("tails-overlay"),
     tailsRefresh: document.getElementById("tails-refresh"),
     tailsClose: document.getElementById("tails-close"),
-    tailsList: document.getElementById("tails-list")
+    tailsList: document.getElementById("tails-list"),
+    copyFioBtn: document.getElementById("copy-fio-btn")
 };
 
 let state = {
@@ -48,7 +49,8 @@ let state = {
     id_vid: null,
     id_teacher: null,
     disciplineGroups: {},
-    currentDiscipline: null
+    currentDiscipline: null,
+    rows: null
 };
 
 // --- утилиты ---------------------------------------------------------------
@@ -104,6 +106,39 @@ function normalizeMark(j) {
     if (j.otsenka !== null && j.otsenka !== undefined && j.otsenka !== "") return String(j.otsenka);
     if (j.otsenka_ball !== null && j.otsenka_ball !== undefined) return String(j.otsenka_ball);
     return "—";
+}
+
+// Цифровая оценка для среднего: "4", "5", "4.5" -> число.
+// "н/б", "н/б 3", "д", "—", null и "0" (в LMS 0 = оценки нет, sentinel у н/б) — мимо.
+function avgValue(mark) {
+    if (mark === null || mark === undefined) return null;
+    const s = String(mark).trim();
+    if (!/^\d+(\.\d+)?$/.test(s)) return null;
+    const v = parseFloat(s);
+    return v > 0 ? v : null;
+}
+
+// Средний балл строки: по всем датам, пустые/нечисловые ячейки не участвуют.
+// null — если цифровых оценок у студента нет вообще.
+function calcAverage(row, columns) {
+    let sum = 0, n = 0;
+    for (const [date] of columns) {
+        const v = avgValue(row.map.get(date));
+        if (v !== null) { sum += v; n++; }
+    }
+    return n ? sum / n : null;
+}
+
+// Пересчёт ячейки «СР.БАЛЛ» после изменения оценки (PUT или подтверждение монитором)
+function refreshAvgFor(login, date, newMark) {
+    const row = (state.rows || []).find(x => x.login === login);
+    if (!row) return;
+    if (date != null && newMark !== undefined) row.map.set(date, newMark);
+    if (row.avgCell && state.columns) {
+        const avg = calcAverage(row, state.columns);
+        row.avgCell.textContent = avg === null ? "—" : avg.toFixed(2);
+        row.avgCell.classList.toggle("empty", avg === null);
+    }
 }
 
 // Приводит отметку к «нехорошему» виду: "1", "2", "нб", "нб3", "д".
@@ -340,6 +375,13 @@ function renderTable(columns, rows) {
     activeMonitors.clear();
     const table = els.table;
     table.innerHTML = "";
+    state.rows = rows;
+
+    // Колонка среднего балла ставится ТОЛЬКО если в таблице есть хотя бы одна
+    // цифровая оценка: «предмет есть, оценок нет» (например, Неонатология ->
+    // Лекционный — пустой журнал) => колонки нет. Пустые ячейки отдельных
+    // студентов в расчёт не входят (это не повод скрывать колонку).
+    const showAvg = rows.some(r => columns.some(([date]) => avgValue(r.map.get(date)) !== null));
 
     // шапка: только даты (по клику/наведению — тема занятия)
     const thead = document.createElement("thead");
@@ -359,6 +401,13 @@ function renderTable(columns, rows) {
         thDate.addEventListener("click", () => openTopicPopup(date, topic));
         trTop.appendChild(thDate);
     });
+
+    if (showAvg) {
+        const thAvg = document.createElement("th");
+        thAvg.className = "avg-head";
+        thAvg.textContent = "СР.БАЛЛ";
+        trTop.appendChild(thAvg);
+    }
     thead.appendChild(trTop);
     table.appendChild(thead);
 
@@ -382,6 +431,17 @@ function renderTable(columns, rows) {
             if (entry) td.addEventListener("click", () => openEditModal(r.login, r.fio, date, entry, colIdx, td));
             tr.appendChild(td);
         });
+
+        if (showAvg) {
+            const avg = calcAverage(r, columns);
+            const tdAvg = document.createElement("td");
+            tdAvg.className = "avg-cell" + (avg === null ? " empty" : "");
+            tdAvg.textContent = avg === null ? "—" : avg.toFixed(2);
+            tr.appendChild(tdAvg);
+            r.avgCell = tdAvg;
+        } else {
+            r.avgCell = undefined;
+        }
         tbody.appendChild(tr);
     });
     table.appendChild(tbody);
@@ -466,6 +526,7 @@ function startMarkMonitor(login, date, targetMarkId, cell) {
                 cell._monitor = null;
                 cell.className = "mark-cell" + (serverMark === "—" ? " empty" : (isBad(serverMark) ? " bad" : ""));
                 cell.textContent = serverMark;
+                refreshAvgFor(login, date, serverMark);
             }
         } catch (e) {
             // сетевая ошибка — продолжаем опрос
@@ -598,6 +659,7 @@ async function openEditModal(login, fio, date, entry, colIdx, cell) {
                 const newMark = MARK_ID_TO_LABEL[parseInt(markId)];
                 cell.className = "mark-cell" + (newMark === "—" ? " empty" : (isBad(newMark) ? " bad" : ""));
                 cell.textContent = newMark;
+                refreshAvgFor(login, date, newMark);
                 startMarkMonitor(login, date, parseInt(markId), cell);
             } else {
                 alert(`FIELD INJECTION FAILED.\nStatus: ${response.status}\nMessage: ${result.message || ''}`);
@@ -785,6 +847,37 @@ function closeTailsPanel() {
     els.tailsOverlay.classList.add("hidden");
 }
 
+// --- копирование ФИО всех студентов столбиком -------------------------------
+async function copyAllFio() {
+    const rows = state.rows || [];
+    if (!rows.length) {
+        setStatus("Таблица не загружена — сначала собери журнал.", "err");
+        return;
+    }
+    const text = rows.map(r => r.fio).join("\n");
+    try {
+        if (navigator.clipboard && window.isSecureContext) {
+            await navigator.clipboard.writeText(text);
+        } else {
+            // fallback без HTTPS/clipboard API
+            const ta = document.createElement("textarea");
+            ta.value = text;
+            ta.style.position = "fixed";
+            ta.style.opacity = "0";
+            document.body.appendChild(ta);
+            ta.select();
+            const ok = document.execCommand("copy");
+            document.body.removeChild(ta);
+            if (!ok) throw new Error("браузер запретил копирование");
+        }
+        setStatus(`Скопировано ФИО: ${rows.length} студентов.`, "ok");
+        els.copyFioBtn.classList.add("copied");
+        setTimeout(() => els.copyFioBtn.classList.remove("copied"), 900);
+    } catch (e) {
+        setStatus("Копирование не удалось: " + e.message, "err");
+    }
+}
+
 // --- события ---------------------------------------------------------------
 els.ws.addEventListener("change", () => { loadReference().catch(e => { setStatus("Ошибка: " + e.message, "err"); setLed("waiting"); }); });
 els.subject.addEventListener("change", () => {
@@ -828,6 +921,7 @@ els.modal.addEventListener("click", e => { if (e.target === els.modal) els.modal
 
 // хвосты
 els.tailsBtn.addEventListener("click", openTailsPanel);
+els.copyFioBtn.addEventListener("click", copyAllFio);
 els.tailsClose.addEventListener("click", closeTailsPanel);
 els.tailsOverlay.addEventListener("click", closeTailsPanel);
 els.tailsRefresh.addEventListener("click", () => loadTails());
