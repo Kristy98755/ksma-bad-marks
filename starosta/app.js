@@ -76,6 +76,15 @@ function setLoader(show, text) {
     els.table.classList.toggle("hidden", show);
 }
 
+// Артефакт LMS: "Ганиев- Миркамил Миркодирович" -> "Ганиев Миркамил Миркодирович".
+// Дефисы без пробела ("Дунканаева-Абдыбекова") не трогаем.
+function cleanFio(fio) {
+    return String(fio || "")
+        .replace(/-\s+/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+}
+
 function parseBaseName(disc) {
     const m = disc.discipline.match(/^\[(.*?)\]\s*(.*)/);
     let tag = m ? `[${m[1]}]` : "";
@@ -283,7 +292,7 @@ async function buildMatrix() {
             setLoader(true, `СБОР ЖУРНАЛА: ${i + 1}/${STUDENTS.length}`);
             const id = login.split("-")[1];
             const user = await fetchJSON(`${BASE}/user?id_user=${id}&id_avn=-1&id_role=2`);
-            const fio = `${user.surname} ${user.name} ${user.patronymic}`.trim();
+            const fio = cleanFio(`${user.surname} ${user.name} ${user.patronymic}`);
 
             const journal = await fetchJSON(
                 `${BASE}/student/journal/?id_year=${ID_YEAR}&id_ws=${state.ws}&id_group=${state.id_group}` +
@@ -748,7 +757,7 @@ async function loadTails() {
         const id = login.split("-")[1];
         try {
             const user = await fetchJSON(`${BASE}/user?id_user=${id}&id_avn=-1&id_role=2`);
-            const fio = `${user.surname} ${user.name} ${user.patronymic}`.trim();
+            const fio = cleanFio(`${user.surname} ${user.name} ${user.patronymic}`);
             const debts = await fetchStudentDebts(id);
             renderTailsItem(login, fio, debts);
         } catch (e) {
