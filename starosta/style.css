@@ -412,6 +412,15 @@ td.mark-cell.empty { color: #555; }
     .top-bar { flex-direction: column; align-items: flex-start; gap: 8px; }
     h1 { font-size: 1rem; }
     .controls { flex-direction: column; align-items: stretch; }
-    .control-group { flex-direction: row; }
+    /* длинный <select> не должен расширять группу шире .controls:
+       разрешаем перенос строк и жёстко ограничиваем ширину */
+    .control-group {
+        flex-direction: row;
+        flex-wrap: wrap;
+        width: 100%;
+        max-width: 100%;
+        min-width: 0;
+    }
+    .control-group select { max-width: 100%; min-width: 0; }
     main { margin-top: 20px; }
 }
