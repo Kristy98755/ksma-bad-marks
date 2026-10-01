@@ -93,8 +93,11 @@ function parseBaseName(disc) {
 }
 
 function parseCredit(disc) {
-    const m = (disc || "").match(/крд\.?\s*(-?\d+(?:\.\d+)?)/i);
-    return m ? parseFloat(m[1]) : null;
+    // как в SCOLPENDRA: "(крд.-2.5)" -> 2.5, "(крд.--0.4)" -> 0.4, "(крд-1.5)" -> 1.5
+    // дефисы после "крд" — разделители, знак к числу не относится; иначе приходят
+    // отрицательные/null кредиты и PUT уходит с битым credit.
+    const m = (disc || "").match(/\(крд[^\d]*([\d.]+)\)/i);
+    return m ? parseFloat(m[1]) : 0;
 }
 
 function normalizeMark(j) {
@@ -488,7 +491,7 @@ async function openEditModal(login, fio, date, entry, colIdx, cell) {
     const discId = entry.id_discipline || state.id_discipline;
     const teacherId = entry.id_teacher || state.id_teacher;
     const vidId = entry.id_vid_zaniatiy || state.id_vid;
-    const credit = entry.credit != null ? entry.credit : (state.currentDiscipline ? state.currentDiscipline.credit : null);
+    const credit = entry.credit != null ? entry.credit : (state.currentDiscipline && state.currentDiscipline.credit != null ? state.currentDiscipline.credit : 0);
     const isoDate = formatDate(date);
     const studentId = parseInt(login.split("-")[1]);
 
@@ -526,14 +529,38 @@ async function openEditModal(login, fio, date, entry, colIdx, cell) {
         `;
         const statusEl = document.getElementById("topic-sync-line");
         if (finalTopicId !== null) statusEl.style.color = "#0f0";
-        else if (topicStatus.includes("MISMATCH") || topicStatus.includes("ERROR")) statusEl.style.color = "#f44";
+        else if (topicStatus.includes("NOT FOUND") || topicStatus.includes("MISMATCH") || topicStatus.includes("ERROR")) statusEl.style.color = "#f44";
     };
 
     renderPayload();
     els.modalMark.onchange = renderPayload;
 
-    // Реальный SEND PUT назначается сразу — не зависит от успеха синка тем
+    // Фоновый синк тем: матчинг по тексту темы урока (тем в списке меньше, чем
+    // уроков — темы повторяются, часть тем вообще отсутствует в списке препода).
+    const topicSyncPromise = (async () => {
+        try {
+            const topicsResponse = await fetchJSON(`${BASE}/lesson-topic/get-lessonTopic?discipline=${discId}&id_teacher=${teacherId}&id_vid_zaniatiy=${vidId}&id_modul=1`, { method: 'POST' });
+            const normTopic = s => String(s || "").toLowerCase().replace(/\s+/g, " ").trim();
+            const columnTopic = state.columns && state.columns[colIdx] ? state.columns[colIdx][1] : "";
+            const hit = topicsResponse.find(t => normTopic(t.lesson_topic) === normTopic(columnTopic));
+            if (hit) {
+                finalTopicId = hit.id_lesson_topic;
+                topicStatus = `[TOPIC MATCH: "${columnTopic}" -> id ${hit.id_lesson_topic}]`;
+            } else {
+                finalTopicId = null;
+                topicStatus = `[TOPIC NOT FOUND: "${columnTopic || "?"}"] - ID OMITTED`;
+            }
+        } catch (e) {
+            finalTopicId = null;
+            topicStatus = `[TOPIC ERROR: ${e.message}]`;
+        }
+        renderPayload();
+    })();
+
+    // Реальный SEND PUT назначается сразу; перед отправкой дожидаемся синка тем,
+    // чтобы ранний клик не ушёл без id_lesson_topic.
     document.getElementById("save-mark").onclick = async () => {
+        await topicSyncPromise.catch(() => {});
         const markId = els.modalMark.value;
         const finalPayload = {
             "id_teacher": parseInt(teacherId),
@@ -579,26 +606,6 @@ async function openEditModal(login, fio, date, entry, colIdx, cell) {
             alert(`CONNECTION LOST: ${err.message}`);
         }
     };
-
-    // Фоновый синк тем (best-effort) — только решает, добавить ли id_lesson_topic
-    (async () => {
-        try {
-            const topicsResponse = await fetchJSON(`${BASE}/lesson-topic/get-lessonTopic?discipline=${discId}&id_teacher=${teacherId}&id_vid_zaniatiy=${vidId}&id_modul=1`, { method: 'POST' });
-
-            const journalCount = state.columns ? state.columns.length : 0;
-            const topicCount = topicsResponse.length;
-            if (journalCount === topicCount) {
-                topicStatus = `[TOPIC MATCH: ${journalCount}/${topicCount}] - SYNCED BY INDEX`;
-                finalTopicId = topicsResponse[colIdx] ? topicsResponse[colIdx].id_lesson_topic : null;
-            } else {
-                topicStatus = `[TOPIC MISMATCH: ${journalCount} Lsns / ${topicCount} Topics] - ID OMITTED`;
-                finalTopicId = null;
-            }
-        } catch (e) {
-            topicStatus = `[TOPIC ERROR: ${e.message}]`;
-        }
-        renderPayload();
-    })();
 }
 
 // --- хвосты (порт движка ksma-bad-marks) ----------------------------------
