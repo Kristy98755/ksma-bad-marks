@@ -934,3 +934,20 @@ els.tailsList.addEventListener("click", e => {
 
 // старт
 loadReference().catch(e => { setStatus("Ошибка: " + e.message, "err"); setLed("waiting"); });
+
+// Отступ контента сверху: не фиксированный, а 20px + фактическая высота шапки
+// (шапка fixed на десктопе и меняет высоту от ширины экрана/переносов строк).
+// На мобиле шапка static и идёт в потоке — ей отступ не нужен, только 20px.
+function syncMainOffset() {
+    const header = document.querySelector("header");
+    const main = document.querySelector("main");
+    if (!header || !main) return;
+    const headerH = getComputedStyle(header).position === "fixed" ? header.offsetHeight : 0;
+    main.style.marginTop = (headerH + 20) + "px";
+}
+syncMainOffset();
+window.addEventListener("resize", syncMainOffset);
+if (document.fonts && document.fonts.ready) document.fonts.ready.then(syncMainOffset);
+if (typeof ResizeObserver !== "undefined") {
+    new ResizeObserver(syncMainOffset).observe(document.querySelector("header"));
+}
