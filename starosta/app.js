@@ -36,6 +36,7 @@ const els = {
     tailsPanel: document.getElementById("tails-panel"),
     tailsOverlay: document.getElementById("tails-overlay"),
     tailsRefresh: document.getElementById("tails-refresh"),
+    tailsPdf: document.getElementById("tails-pdf"),
     tailsClose: document.getElementById("tails-close"),
     tailsList: document.getElementById("tails-list"),
     copyFioBtn: document.getElementById("copy-fio-btn")
@@ -729,16 +730,22 @@ async function fetchStudentDebts(idStudent) {
             console.error("debt error for", disc.discipline, err);
         }
     }));
+    // карточки приходят в порядке завершения параллельных запросов — сортируем
+    // по дате (потом по предмету), чтобы и матрица, и PDF читались по порядку
+    result.cards.sort((a, b) =>
+        (parseDate(a.date) - parseDate(b.date)) ||
+        String(a.subject).localeCompare(String(b.subject), "ru"));
     return result;
 }
 
-// столбик строк счётчика: «2» – N / «1» – N / «нб» – N / «д» – N
-// в счётчике "нб" и "нб3" складываются в одну строку «нб»;
+// столбик строк счётчика: «2» – N / «1» – N / «нб» – N / «нб3» – N / «д» – N
+// "нб" и "нб3" — разные виды, в одну строку НЕ складываются;
 // нулевые, null и отсутствующие значения не выводятся
 const TAIL_ROWS = [
     ["«2»", ["2"]],
     ["«1»", ["1"]],
-    ["«нб»", ["нб", "нб3"]],
+    ["«нб»", ["нб"]],
+    ["«нб3»", ["нб3"]],
     ["«д»", ["д"]]
 ];
 
@@ -786,11 +793,25 @@ function buildTailsDetail(debts) {
 }
 
 let tailsItems = {};
+let tailsRoster = [];   // [{ login, fio }] — порядок списка: по фамилии
+let tailsResults = {};  // login -> { fio, debts } | { fio, error }
 
-function renderTailsSkeleton() {
+// ФИО — "Фамилия Имя Отчество", поэтому сортировка строк = сортировка по фамилии
+// (логины вроде "1-61709" тут ни при чём — раньше список шёл в порядке STUDENTS)
+function compareFio(a, b) {
+    return String(a || "").localeCompare(String(b || ""), "ru");
+}
+
+function totalTails(debts) {
+    if (!debts || !debts.total) return 0;
+    return Object.keys(debts.total).reduce((s, k) => s + (Number(debts.total[k]) || 0), 0);
+}
+
+function renderTailsSkeleton(roster) {
     els.tailsList.innerHTML = "";
     tailsItems = {};
-    STUDENTS.forEach(login => {
+    tailsResults = {};
+    roster.forEach(({ login }) => {
         const item = document.createElement("div");
         item.className = "tails-item loading";
         item.innerHTML = `<div class="tails-item-head"><span class="tails-fio">${escapeHtml(login)}</span><span class="tails-summary">загрузка…</span></div><div class="tails-detail hidden"></div>`;
@@ -800,6 +821,7 @@ function renderTailsSkeleton() {
 }
 
 function renderTailsItem(login, fio, debts) {
+    tailsResults[login] = { fio, debts };
     const item = tailsItems[login];
     if (!item) return;
     item.classList.remove("loading");
@@ -808,10 +830,12 @@ function renderTailsItem(login, fio, debts) {
     item.querySelector(".tails-detail").innerHTML = buildTailsDetail(debts);
 }
 
-function renderTailsItemError(login, msg) {
+function renderTailsItemError(login, fio, msg) {
+    tailsResults[login] = { fio, error: msg };
     const item = tailsItems[login];
     if (!item) return;
     item.classList.remove("loading");
+    item.querySelector(".tails-fio").textContent = fio || login;
     item.querySelector(".tails-summary").textContent = "ошибка";
     item.querySelector(".tails-detail").innerHTML = `<div class="tails-none" style="color:#f44">${escapeHtml(msg)}</div>`;
 }
@@ -821,16 +845,39 @@ async function loadTails() {
         setStatus("Сначала дождись загрузки группы (выбор предмета).", "err");
         return;
     }
-    renderTailsSkeleton();
-    await Promise.all(STUDENTS.map(async (login) => {
+
+    // на время перезагрузки список пуст (экспорт в это время скажет «подожди»)
+    els.tailsList.innerHTML = "";
+    tailsRoster = [];
+    tailsResults = {};
+
+    // 1) ФИО всех студентов — чтобы выстроить список по фамилии, а не по логину
+    let read = 0;
+    setStatus(`ЧТЕНИЕ ФИО ГРУППЫ: 0/${STUDENTS.length}`, "info");
+    const roster = await Promise.all(STUDENTS.map(async (login) => {
         const id = login.split("-")[1];
         try {
             const user = await fetchJSON(`${BASE}/user?id_user=${id}&id_avn=-1&id_role=2`);
-            const fio = cleanFio(`${user.surname} ${user.name} ${user.patronymic}`);
-            const debts = await fetchStudentDebts(id);
+            return { login, fio: cleanFio(`${user.surname} ${user.name} ${user.patronymic}`) };
+        } catch (e) {
+            return { login, fio: login, error: e.message };
+        } finally {
+            read++;
+            setStatus(`ЧТЕНИЕ ФИО ГРУППЫ: ${read}/${STUDENTS.length}`, "info");
+        }
+    }));
+    roster.sort((a, b) => compareFio(a.fio, b.fio));
+    tailsRoster = roster;
+    renderTailsSkeleton(roster);
+    roster.forEach(r => { if (r.error) renderTailsItemError(r.login, r.fio, r.error); });
+
+    // 2) хвосты каждого — по мере готовности, порядок в DOM уже по фамилии
+    await Promise.all(roster.filter(r => !r.error).map(async ({ login, fio }) => {
+        try {
+            const debts = await fetchStudentDebts(login.split("-")[1]);
             renderTailsItem(login, fio, debts);
         } catch (e) {
-            renderTailsItemError(login, e.message);
+            renderTailsItemError(login, fio, e.message);
         }
     }));
     setStatus("Хвосты обновлены.", "ok");
@@ -845,6 +892,238 @@ function openTailsPanel() {
 function closeTailsPanel() {
     els.tailsPanel.classList.remove("open");
     els.tailsOverlay.classList.add("hidden");
+}
+
+// --- экспорт списка хвостов в PDF -------------------------------------------
+// PDF собирается прямо в браузере, штатное средство печати не используется:
+//  1) список рисуется на canvas — кириллица выводится веб-шрифтом как есть
+//     (стандартные шрифты jsPDF кириллицу не умеют);
+//  2) страницы canvas складываются в PDF через jsPDF.
+// jsPDF грузится с CDN один раз и сохраняется в localStorage (не в Cache API):
+// localStorage живёт дольше и не зависит от Service Worker/кэша страницы.
+const PDF_LIB_KEY = "starosta.jspdf.2.5.2";
+const PDF_LIB_URLS = [
+    "https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js",
+    "https://unpkg.com/jspdf@2.5.2/dist/jspdf.umd.min.js"
+];
+const PDF_PX_W = 1240;  // A4 при 150 dpi
+const PDF_PX_H = 1754;
+const PDF_MARGIN = 70;
+
+function injectPdfLib(src) {
+    try {
+        const script = document.createElement("script");
+        script.textContent = src;
+        document.head.appendChild(script);
+    } catch (e) {
+        // CSP запрещает — считаем загрузку неудачной
+    }
+    return !!(window.jspdf && window.jspdf.jsPDF);
+}
+
+async function fetchPdfLib() {
+    for (const url of PDF_LIB_URLS) {
+        try {
+            const res = await fetch(url);
+            if (!res.ok) continue;
+            const text = await res.text();
+            if (text && text.indexOf("jsPDF") !== -1) return text;
+        } catch (e) {
+            // пробуем следующий CDN
+        }
+    }
+    return null;
+}
+
+async function ensureJsPDF() {
+    if (window.jspdf && window.jspdf.jsPDF) return window.jspdf.jsPDF;
+
+    // 1) копия из localStorage (работает и офлайн)
+    let stored = null;
+    try { stored = localStorage.getItem(PDF_LIB_KEY); } catch (e) { /* приватный режим */ }
+    if (stored && injectPdfLib(stored)) return window.jspdf.jsPDF;
+    if (stored) {
+        // битая/устаревшая копия — выкидываем и тянем заново
+        try { localStorage.removeItem(PDF_LIB_KEY); } catch (e) { /* ignore */ }
+    }
+
+    // 2) первая загрузка: CDN -> localStorage
+    setStatus("ЗАГРУЗКА БИБЛИОТЕКИ PDF...", "info");
+    const src = await fetchPdfLib();
+    if (!src) throw new Error("библиотека PDF недоступна (нет сети или CDN)");
+    if (!injectPdfLib(src)) throw new Error("библиотека PDF не инициализировалась");
+    try { localStorage.setItem(PDF_LIB_KEY, src); } catch (e) { /* квота — работаем из памяти */ }
+    return window.jspdf.jsPDF;
+}
+
+function buildTailsPdfPages(entries) {
+    const pages = [];
+    let ctx = null;
+    let y = 0;
+
+    const font = (size, bold) =>
+        `${bold ? "700" : "400"} ${size}px "Courier Prime", "Courier New", monospace`;
+
+    function newPage() {
+        const canvas = document.createElement("canvas");
+        canvas.width = PDF_PX_W;
+        canvas.height = PDF_PX_H;
+        const c = canvas.getContext("2d");
+        c.fillStyle = "#ffffff";
+        c.fillRect(0, 0, PDF_PX_W, PDF_PX_H);
+        c.textBaseline = "top";
+        pages.push({ canvas, ctx: c });
+        ctx = c;
+        y = PDF_MARGIN;
+    }
+
+    function ensure(h) {
+        if (y + h > PDF_PX_H - PDF_MARGIN) newPage();
+    }
+
+    // разбивка текста на строки по ширине; слова длиннее строки — посимвольно
+    function wrapText(text, size, bold, maxW) {
+        ctx.font = font(size, bold);
+        const out = [];
+        let line = "";
+        const push = () => { if (line !== "") { out.push(line); line = ""; } };
+        for (const word of String(text).split(/\s+/).filter(w => w !== "")) {
+            let w = word;
+            const test = line ? line + " " + w : w;
+            if (ctx.measureText(test).width <= maxW) { line = test; continue; }
+            push();
+            while (w !== "" && ctx.measureText(w).width > maxW) {
+                let cut = w.length;
+                while (cut > 1 && ctx.measureText(w.slice(0, cut)).width > maxW) cut--;
+                out.push(w.slice(0, cut));
+                w = w.slice(cut);
+            }
+            line = w;
+        }
+        push();
+        return out.length ? out : [""];
+    }
+
+    function drawText(text, opts) {
+        const size = opts.size || 16;
+        const bold = !!opts.bold;
+        const indent = opts.indent || 0;
+        const maxW = PDF_PX_W - PDF_MARGIN * 2 - indent;
+        const lh = Math.round(size * 1.4);
+        for (const line of wrapText(text, size, bold, maxW)) {
+            ensure(lh);
+            // ctx мог смениться при переходе на новую страницу — шрифт заново
+            ctx.font = font(size, bold);
+            ctx.fillStyle = opts.color || "#111111";
+            ctx.fillText(line, PDF_MARGIN + indent, y);
+            y += lh;
+        }
+    }
+
+    function spacer(h) { y += h; }
+
+    function rule() {
+        ensure(14);
+        ctx.strokeStyle = "#bbbbbb";
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(PDF_MARGIN, y + 4);
+        ctx.lineTo(PDF_PX_W - PDF_MARGIN, y + 4);
+        ctx.stroke();
+        y += 14;
+    }
+
+    newPage();
+
+    // заголовок отчёта
+    drawText("STAROSTA // СПИСОК ХВОСТОВ", { size: 30, bold: true });
+    const wsLabel = state.ws === "1" ? "Весеннее" : "Осеннее";
+    const readyNote = entries.length < tailsRoster.length
+        ? ` · готово ${entries.length} из ${tailsRoster.length}` : "";
+    drawText(`Группа ${state.id_group || "?"} · ${wsLabel} полугодие · ${new Date().toLocaleDateString("ru-RU")}${readyNote}`,
+        { size: 15, color: "#555555" });
+    spacer(4);
+    rule();
+    spacer(6);
+
+    entries.forEach((entry, i) => {
+        // шапку студента не оставляем внизу страницы в одиночку
+        ensure(Math.round(19 * 1.4) + Math.round(15 * 1.4));
+        drawText(`${i + 1}. ${entry.fio} (${entry.login})`, { size: 19, bold: true });
+        if (entry.error) {
+            drawText(`ошибка загрузки: ${entry.error}`, { size: 14, indent: 24, color: "#c0392b" });
+        } else {
+            const counts = countLines(entry.debts.total);
+            if (!counts.length) {
+                drawText("— хвостов нет", { size: 14, indent: 24, color: "#666666" });
+            } else {
+                drawText(`ВСЕГО: ${totalTails(entry.debts)}    ${counts.join("    ")}`,
+                    { size: 15, bold: true, indent: 24 });
+                entry.debts.cards.forEach(c => {
+                    const tip = c.type === "Практический" ? "практ."
+                        : (c.type === "Лекционный" ? "лекц." : (c.type || ""));
+                    drawText(`• ${c.date || "—"} · ${c.subject}${tip ? " (" + tip + ")" : ""} · ${c.mark || "—"}`,
+                        { size: 14, indent: 44 });
+                    if (c.teacher) drawText(`препод: ${c.teacher}`, { size: 13, indent: 64, color: "#666666" });
+                });
+            }
+        }
+        spacer(16);
+    });
+
+    // колонтитул после сборки — знаем общее число страниц
+    pages.forEach((p, idx) => {
+        p.ctx.font = font(13, false);
+        p.ctx.fillStyle = "#999999";
+        p.ctx.fillText("ksma-bad-marks · starosta", PDF_MARGIN, PDF_PX_H - PDF_MARGIN + 16);
+        const right = `Стр. ${idx + 1} / ${pages.length}`;
+        p.ctx.fillText(right, PDF_PX_W - PDF_MARGIN - p.ctx.measureText(right).width, PDF_PX_H - PDF_MARGIN + 16);
+    });
+
+    return pages;
+}
+
+// Собрать и отдать PDF со списком хвостов (кнопка «PDF» в панели хвостов)
+async function exportTailsPdf() {
+    if (!tailsRoster.length) {
+        setStatus("Список хвостов не загружен — сначала нажми «⟳».", "err");
+        return;
+    }
+    const entries = tailsRoster
+        .map(r => {
+            const res = tailsResults[r.login];
+            if (!res) return null;
+            return { login: r.login, fio: res.fio || r.fio, debts: res.debts, error: res.error };
+        })
+        .filter(Boolean);
+    if (!entries.length) {
+        setStatus("Данных ещё нет — список загружается, подожди.", "err");
+        return;
+    }
+
+    const btn = els.tailsPdf;
+    if (btn) { btn.disabled = true; btn.classList.add("busy"); }
+    try {
+        const JsPDF = await ensureJsPDF();
+        if (document.fonts && document.fonts.ready) {
+            try { await document.fonts.ready; } catch (e) { /* шрифт догрузится с системным */ }
+        }
+        const pages = buildTailsPdfPages(entries);
+        const doc = new JsPDF({ unit: "mm", format: "a4", orientation: "portrait" });
+        pages.forEach((p, i) => {
+            if (i) doc.addPage();
+            doc.addImage(p.canvas.toDataURL("image/jpeg", 0.92), "JPEG", 0, 0, 210, 297);
+        });
+        const d = new Date();
+        const pad = n => String(n).padStart(2, "0");
+        const name = `hvosty_${state.id_group || "group"}_${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}.pdf`;
+        doc.save(name);
+        setStatus(`PDF сохранён: ${pages.length} стр., ${entries.length} студ.`, "ok");
+    } catch (e) {
+        setStatus("PDF не удался: " + e.message, "err");
+    } finally {
+        if (btn) { btn.disabled = false; btn.classList.remove("busy"); }
+    }
 }
 
 // --- копирование ФИО всех студентов столбиком -------------------------------
@@ -925,6 +1204,7 @@ els.copyFioBtn.addEventListener("click", copyAllFio);
 els.tailsClose.addEventListener("click", closeTailsPanel);
 els.tailsOverlay.addEventListener("click", closeTailsPanel);
 els.tailsRefresh.addEventListener("click", () => loadTails());
+els.tailsPdf.addEventListener("click", () => exportTailsPdf());
 els.tailsList.addEventListener("click", e => {
     const head = e.target.closest(".tails-item-head");
     if (!head) return;

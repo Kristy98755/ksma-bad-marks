@@ -380,6 +380,9 @@ td.mark-cell { color: var(--cyan); font-weight: bold; font-size: 16.5px; }
 .tails-header h2 { color: var(--cyan); margin: 0; flex: 1; letter-spacing: 2px; text-shadow: 0 0 8px rgba(0,255,255,0.4); }
 #tails-refresh { background: transparent; border: 1px solid var(--cyan); color: var(--cyan); cursor: pointer; font-size: 1.2rem; padding: 2px 9px; border-radius: 4px; }
 #tails-refresh:hover { background: var(--cyan); color: var(--bg); }
+#tails-pdf { background: transparent; border: 1px solid var(--cyan); color: var(--cyan); cursor: pointer; font-family: inherit; font-size: 0.78rem; font-weight: bold; letter-spacing: 1px; padding: 4px 9px; border-radius: 4px; }
+#tails-pdf:hover { background: var(--cyan); color: var(--bg); }
+#tails-pdf:disabled { opacity: 0.45; cursor: wait; }
 .tails-close { background: transparent; border: none; color: var(--cyan-dim); font-size: 1.8rem; cursor: pointer; line-height: 1; padding: 0 4px; }
 .tails-close:hover { color: var(--cyan); text-shadow: 0 0 10px var(--cyan); }
 #tails-list { flex: 1; overflow-y: auto; padding: 10px; }
