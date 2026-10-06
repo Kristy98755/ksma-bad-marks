@@ -19,19 +19,36 @@ loginInput.addEventListener("keydown", function (e) {
 	}
 });
 
+// Приводит отметку к «нехорошему» виду: "1", "2", "нб", "нб3", "д".
+// LMS отдаёт "н/б" и "н/б 3" (одинаковый otsenka_ball = 0), но встречаются и
+// "нб"/"нб 3"/"нб3" — парсим всё вариативно. "нб3" — самостоятельный вид:
+// с простым "нб" НЕ складывается, учитывается отдельно. Всё прочее -> null.
+function normalizeBadKind(raw) {
+	const s = String(raw == null ? "" : raw).toLowerCase().replace(/\s+/g, " ").trim();
+	if (s === "1") return "1";
+	if (s === "2") return "2";
+	if (/^н\/?б\s*3/.test(s)) return "нб3";
+	if (/^н\/?б/.test(s)) return "нб";
+	if (s === "д" || /^допущен/.test(s)) return "д";
+	return null;
+}
+
 function isBadLesson(lesson, vidType) {
-	const mark = String(lesson.otsenka_ball);
-	const status = String(lesson.otsenka || "").toLowerCase();
 	const attempt = lesson.attempt;
 
 	// Если попытка 2 или 3 — считаем, что неудовлетворительная уже отработана, игнорируем
 	if (attempt === 2 || attempt === 3) return false;
+
+	// отметка берётся так же, как в карточке: otsenka приоритетнее балла
+	const kind = normalizeBadKind(lesson.otsenka || lesson.otsenka_ball);
+	if (!kind) return false;
+
 	if (vidType === "Лекционный") {
-		// Для лекций учитываем только "д" и "н/б"
-		return status === "д" || status === "н/б";
+		// Для лекций учитываем только "д", "н/б" и "н/б 3"
+		return kind === "д" || kind === "нб" || kind === "нб3";
 	} else {
-		// Для практики учитываем 1, 2, д, н/б
-		return mark === "1" || mark === "2" || status === "д" || status === "н/б";
+		// Для практики учитываем 1, 2, д, н/б, н/б 3
+		return true;
 	}
 }
 
@@ -120,7 +137,9 @@ async function mainscript() {
 		if (String(idGroup) !== "9388") return false;
 		const isTargetSubject = subject.includes("ВМП-ОТМС") || subject.includes("Пропедевтик");
 		if (!isTargetSubject) return false;
-		if (markStr === "н/б" || markStr === "нб") return false;
+		// пропуски ("н/б" и "н/б 3") идут обычными хвостами, "своими" они не считаются
+		const kind = normalizeBadKind(markStr);
+		if (kind === "нб" || kind === "нб3") return false;
 		return true;
 	}
 
@@ -128,7 +147,7 @@ async function mainscript() {
 		const card = document.createElement("div");
 		card.className = "card";
 		const displayMark = mark && mark !== "" ? mark : "—";
-		const markClass = (displayMark === "1" || displayMark === "2" || displayMark === "н/б" || displayMark === "нб" || displayMark === "д") ? "bad" : "warn";
+		const markClass = normalizeBadKind(displayMark) ? "bad" : "warn";
 
 		let tipZan = "";
 		if (type === "Практический") tipZan = "(практ.)";

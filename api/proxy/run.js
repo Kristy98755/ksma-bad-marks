@@ -6,13 +6,25 @@ const BASE = "https://lms.kgma.kg/vm/api";
 const ID_YEAR = 26;
 const agent = new https.Agent({ rejectUnauthorized: false });
 
+// "1", "2", "нб", "нб3", "д" | null. "нб3" ("н/б 3") — самостоятельный вид,
+// с "нб" не складывается. LMS отдаёт "н/б"/"н/б 3" (со слэшем) — парсим вариативно.
+function normalizeBadKind(raw) {
+  const s = String(raw == null ? "" : raw).toLowerCase().replace(/\s+/g, " ").trim();
+  if (s === "1") return "1";
+  if (s === "2") return "2";
+  if (/^н\/?б\s*3/.test(s)) return "нб3";
+  if (/^н\/?б/.test(s)) return "нб";
+  if (s === "д" || /^допущен/.test(s)) return "д";
+  return null;
+}
+
 function isBadLesson(lesson, vidType) {
-  const mark = String(lesson.otsenka_ball);
-  const status = String(lesson.otsenka || "").toLowerCase();
   const attempt = lesson.attempt;
   if (attempt === 2 || attempt === 3) return false;
-  if (vidType === "Лекционный") return status === "д" || status === "нб";
-  return mark === "1" || mark === "2" || status === "д" || status === "нб";
+  const kind = normalizeBadKind(lesson.otsenka || lesson.otsenka_ball);
+  if (!kind) return false;
+  if (vidType === "Лекционный") return kind === "д" || kind === "нб" || kind === "нб3";
+  return true;
 }
 
 async function fetchJSON(url) {
