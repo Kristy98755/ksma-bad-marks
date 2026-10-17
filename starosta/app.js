@@ -1057,17 +1057,81 @@ function buildTailsPdfPages(entries) {
             } else {
                 drawText(`ВСЕГО: ${totalTails(entry.debts)}    ${counts.join("    ")}`,
                     { size: 15, bold: true, indent: 24 });
-                entry.debts.cards.forEach(c => {
-                    const tip = c.type === "Практический" ? "практ."
-                        : (c.type === "Лекционный" ? "лекц." : (c.type || ""));
-                    drawText(`• ${c.date || "—"} · ${c.subject}${tip ? " (" + tip + ")" : ""} · ${c.mark || "—"}`,
-                        { size: 14, indent: 44 });
-                    if (c.teacher) drawText(`препод: ${c.teacher}`, { size: 13, indent: 64, color: "#666666" });
-                });
+                // секции: хвосты («2»/«1»/нб/нб3) и допуски («д»), внутри — по преподам
+                const sections = [
+                    ["ХВОСТЫ:", entry.debts.cards.filter(c => c.kind !== "д")],
+                    ["ДОПУСКИ (д):", entry.debts.cards.filter(c => c.kind === "д")]
+                ];
+                for (const [secTitle, cards] of sections) {
+                    if (!cards.length) continue;
+                    drawText(secTitle, { size: 15, bold: true, indent: 24, color: "#555555" });
+                    // группировка по преподу: алфавитно, «не указан» — в конец
+                    const byTeacher = new Map();
+                    cards.forEach(c => {
+                        const t = (c.teacher || "").trim() || "препод не указан";
+                        if (!byTeacher.has(t)) byTeacher.set(t, []);
+                        byTeacher.get(t).push(c);
+                    });
+                    const teacherNames = Array.from(byTeacher.keys()).sort((a, b) => {
+                        if (a === "препод не указан") return 1;
+                        if (b === "препод не указан") return -1;
+                        return a.localeCompare(b, "ru");
+                    });
+                    for (const t of teacherNames) {
+                        // имя препода не рвём: оно + хотя бы одна карточка
+                        ensure(Math.round(15 * 1.4) + Math.round(14 * 1.4));
+                        drawText(t, { size: 15, bold: true, indent: 44 });
+                        for (const c of byTeacher.get(t)) {
+                            const tip = c.type === "Практический" ? "практ."
+                                : (c.type === "Лекционный" ? "лекц." : (c.type || ""));
+                            drawText(`• ${c.date || "—"} · ${c.subject}${tip ? " (" + tip + ")" : ""} · ${c.mark || "—"}`,
+                                { size: 14, indent: 64 });
+                        }
+                    }
+                }
             }
         }
         spacer(16);
     });
+
+    // сводка по преподам — в конце, после последнего студента
+    // «1 запись» / «2 записи» / «5 записей»
+    const plural = (n, one, few, many) => {
+        const m10 = n % 10, m100 = n % 100;
+        if (m10 === 1 && m100 !== 11) return one;
+        if (m10 >= 2 && m10 <= 4 && (m100 < 10 || m100 >= 20)) return few;
+        return many;
+    };
+    const teacherAgg = new Map();  // препод -> { logins: Set, cards, dop }
+    entries.forEach(entry => {
+        if (entry.error || !entry.debts || !entry.debts.cards) return;
+        entry.debts.cards.forEach(c => {
+            const t = (c.teacher || "").trim() || "препод не указан";
+            let a = teacherAgg.get(t);
+            if (!a) { a = { logins: new Set(), cards: 0, dop: 0 }; teacherAgg.set(t, a); }
+            a.logins.add(entry.login);
+            a.cards++;
+            if (c.kind === "д") a.dop++;
+        });
+    });
+    if (teacherAgg.size) {
+        spacer(8);
+        rule();
+        spacer(4);
+        drawText("СВОДКА ПО ПРЕПОДАМ", { size: 26, bold: true });
+        const wsLabel2 = state.ws === "1" ? "Весеннее" : "Осеннее";
+        drawText(`Группа ${state.id_group || "?"} · ${wsLabel2} полугодие · ${entries.length} ${plural(entries.length, "студент", "студента", "студентов")}`,
+            { size: 15, color: "#555555" });
+        spacer(4);
+        rule();
+        spacer(6);
+        const teacherRows = Array.from(teacherAgg.entries())
+            .sort((a, b) => (b[1].cards - a[1].cards) || a[0].localeCompare(b[0], "ru"));
+        for (const [t, a] of teacherRows) {
+            drawText(`${t} — ${a.logins.size} студ. · ${a.cards} ${plural(a.cards, "запись", "записи", "записей")}${a.dop ? ` · допусков: ${a.dop}` : ""}`,
+                { size: 14 });
+        }
+    }
 
     // колонтитул после сборки — знаем общее число страниц
     pages.forEach((p, idx) => {
