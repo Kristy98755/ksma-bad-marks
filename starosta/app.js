@@ -1055,7 +1055,21 @@ function buildTailsPdfPages(entries) {
             if (!counts.length) {
                 drawText("— хвостов нет", { size: 14, indent: 24, color: "#666666" });
             } else {
-                drawText(`ВСЕГО: ${totalTails(entry.debts)}    ${counts.join("    ")}`,
+                // «Всего 4 хвоста: 2 — 1, н/б — 2, д — 1» — только ненулевые виды
+                const hvostWord = n => {
+                    const m10 = n % 10, m100 = n % 100;
+                    if (m10 === 1 && m100 !== 11) return "хвост";
+                    if (m10 >= 2 && m10 <= 4 && (m100 < 10 || m100 >= 20)) return "хвоста";
+                    return "хвостов";
+                };
+                const total = totalTails(entry.debts);
+                const parts = [
+                    ["2", "2"], ["1", "1"], ["нб", "н/б"], ["нб3", "н/б 3"], ["д", "д"]
+                ]
+                    .map(([k, label]) => [label, Number(entry.debts.total[k]) || 0])
+                    .filter(([, n]) => n > 0)
+                    .map(([label, n]) => `${label} — ${n}`);
+                drawText(`Всего ${total} ${hvostWord(total)}: ${parts.join(", ")}`,
                     { size: 15, bold: true, indent: 24 });
                 // секции: хвосты («2»/«1»/нб/нб3) и допуски («д»), внутри — по преподам
                 const sections = [
