@@ -1051,57 +1051,82 @@ function buildTailsPdfPages(entries) {
         if (entry.error) {
             drawText(`ошибка загрузки: ${entry.error}`, { size: 14, indent: 24, color: "#c0392b" });
         } else {
-            const counts = countLines(entry.debts.total);
-            if (!counts.length) {
+            const total = totalTails(entry.debts);
+            if (!total) {
                 drawText("— хвостов нет", { size: 14, indent: 24, color: "#666666" });
             } else {
-                // «Всего 4 хвоста: 2 — 1, н/б — 2, д — 1» — только ненулевые виды
-                const hvostWord = n => {
-                    const m10 = n % 10, m100 = n % 100;
-                    if (m10 === 1 && m100 !== 11) return "хвост";
-                    if (m10 >= 2 && m10 <= 4 && (m100 < 10 || m100 >= 20)) return "хвоста";
-                    return "хвостов";
-                };
-                const total = totalTails(entry.debts);
-                const parts = [
-                    ["2", "2"], ["1", "1"], ["нб", "н/б"], ["нб3", "н/б 3"], ["д", "д"]
-                ]
+                // «Всего : 5» + построчно «1» - 4 / «Д» - 1 — только ненулевые
+                drawText(`Всего : ${total}`, { size: 15, bold: true, indent: 24 });
+                [["2", "«2»"], ["1", "«1»"], ["нб", "«нб»"], ["нб3", "«нб3»"], ["д", "«Д»"]]
                     .map(([k, label]) => [label, Number(entry.debts.total[k]) || 0])
                     .filter(([, n]) => n > 0)
-                    .map(([label, n]) => `${label} — ${n}`);
-                drawText(`Всего ${total} ${hvostWord(total)}: ${parts.join(", ")}`,
-                    { size: 15, bold: true, indent: 24 });
-                // секции: хвосты («2»/«1»/нб/нб3) и допуски («д»), внутри — по преподам
+                    .forEach(([label, n]) => {
+                        drawText(`${label} - ${n}`, { size: 14, indent: 24 });
+                    });
+                spacer(8);
+
+                // дата 15.09.2026 -> 15.09.26
+                const shortDate = d => {
+                    if (!d) return "—";
+                    const p = String(d).match(/^(\d{2})\.(\d{2})\.(\d{4})$/);
+                    if (p) return `${p[1]}.${p[2]}.${p[3].slice(2)}`;
+                    const q = String(d).match(/^(\d{4})-(\d{2})-(\d{2})/);
+                    if (q) return `${q[3]}.${q[2]}.${q[1].slice(2)}`;
+                    return String(d);
+                };
+
+                // секции: пропуски (нб/нб3), допуски (д), отработки (1/2)
                 const sections = [
-                    ["ХВОСТЫ:", entry.debts.cards.filter(c => c.kind !== "д")],
-                    ["ДОПУСКИ (д):", entry.debts.cards.filter(c => c.kind === "д")]
+                    ["ПРОПУСКИ:", ["нб", "нб3"]],
+                    ["ДОПУСКИ:", ["д"]],
+                    ["ОТРАБОТКИ:", ["1", "2"]]
                 ];
-                for (const [secTitle, cards] of sections) {
+                for (const [secTitle, kinds] of sections) {
+                    const cards = entry.debts.cards.filter(c => kinds.includes(c.kind));
                     if (!cards.length) continue;
                     drawText(secTitle, { size: 15, bold: true, indent: 24, color: "#555555" });
-                    // группировка по преподу: алфавитно, «не указан» — в конец
-                    const byTeacher = new Map();
+                    // предмет -> препод (мелко) -> записи; пустые секции не рисуем
+                    const bySubject = new Map();
                     cards.forEach(c => {
+                        const s = (c.subject || "").trim() || "предмет не указан";
+                        if (!bySubject.has(s)) bySubject.set(s, new Map());
+                        const tm = bySubject.get(s);
                         const t = (c.teacher || "").trim() || "препод не указан";
-                        if (!byTeacher.has(t)) byTeacher.set(t, []);
-                        byTeacher.get(t).push(c);
+                        if (!tm.has(t)) tm.set(t, []);
+                        tm.get(t).push(c);
                     });
-                    const teacherNames = Array.from(byTeacher.keys()).sort((a, b) => {
-                        if (a === "препод не указан") return 1;
-                        if (b === "препод не указан") return -1;
-                        return a.localeCompare(b, "ru");
-                    });
-                    for (const t of teacherNames) {
-                        // имя препода не рвём: оно + хотя бы одна карточка
-                        ensure(Math.round(15 * 1.4) + Math.round(14 * 1.4));
-                        drawText(t, { size: 15, bold: true, indent: 44 });
-                        for (const c of byTeacher.get(t)) {
-                            const tip = c.type === "Практический" ? "практ."
-                                : (c.type === "Лекционный" ? "лекц." : (c.type || ""));
-                            drawText(`• ${c.date || "—"} · ${c.subject}${tip ? " (" + tip + ")" : ""} · ${c.mark || "—"}`,
-                                { size: 14, indent: 64 });
+                    const subjects = Array.from(bySubject.keys())
+                        .sort((a, b) => a.localeCompare(b, "ru"));
+                    for (const s of subjects) {
+                        const tm = bySubject.get(s);
+                        const teachers = Array.from(tm.keys()).sort((a, b) => {
+                            if (a === "препод не указан") return 1;
+                            if (b === "препод не указан") return -1;
+                            return a.localeCompare(b, "ru");
+                        });
+                        // предмет + первый препод + первая запись — не внизу страницы
+                        ensure(Math.round(15 * 1.4) + Math.round(13 * 1.4) +
+                            Math.round(14 * 1.4) + 6);
+                        drawText(s, { size: 15, bold: true, indent: 44 });
+                        for (const t of teachers) {
+                            if (t !== teachers[0]) {
+                                ensure(Math.round(13 * 1.4) + Math.round(14 * 1.4) + 6);
+                            }
+                            drawText(t, { size: 13, indent: 44, color: "#666666" });
+                            spacer(6);
+                            for (const c of tm.get(t)) {
+                                const d = shortDate(c.date);
+                                const topic = (c.topic || "").trim();
+                                const line = kinds.includes("д")
+                                    ? (topic ? `${d}. ${topic}` : d)
+                                    : `«${c.kind}» — ${d}${topic ? ". " + topic : ""}`;
+                                drawText(line, { size: 14, indent: 64 });
+                                spacer(6);
+                            }
                         }
+                        spacer(4);
                     }
+                    spacer(4);
                 }
             }
         }
