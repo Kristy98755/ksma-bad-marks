@@ -1047,7 +1047,7 @@ function buildTailsPdfPages(entries) {
     entries.forEach((entry, i) => {
         // шапку студента не оставляем внизу страницы в одиночку
         ensure(Math.round(19 * 1.4) + Math.round(15 * 1.4));
-        drawText(`${i + 1}. ${entry.fio} (${entry.login})`, { size: 19, bold: true });
+        drawText(`${i + 1}. ${entry.fio}`, { size: 19, bold: true });
         if (entry.error) {
             drawText(`ошибка загрузки: ${entry.error}`, { size: 14, indent: 24, color: "#c0392b" });
         } else {
@@ -1093,45 +1093,6 @@ function buildTailsPdfPages(entries) {
         }
         spacer(16);
     });
-
-    // сводка по преподам — в конце, после последнего студента
-    // «1 запись» / «2 записи» / «5 записей»
-    const plural = (n, one, few, many) => {
-        const m10 = n % 10, m100 = n % 100;
-        if (m10 === 1 && m100 !== 11) return one;
-        if (m10 >= 2 && m10 <= 4 && (m100 < 10 || m100 >= 20)) return few;
-        return many;
-    };
-    const teacherAgg = new Map();  // препод -> { logins: Set, cards, dop }
-    entries.forEach(entry => {
-        if (entry.error || !entry.debts || !entry.debts.cards) return;
-        entry.debts.cards.forEach(c => {
-            const t = (c.teacher || "").trim() || "препод не указан";
-            let a = teacherAgg.get(t);
-            if (!a) { a = { logins: new Set(), cards: 0, dop: 0 }; teacherAgg.set(t, a); }
-            a.logins.add(entry.login);
-            a.cards++;
-            if (c.kind === "д") a.dop++;
-        });
-    });
-    if (teacherAgg.size) {
-        spacer(8);
-        rule();
-        spacer(4);
-        drawText("СВОДКА ПО ПРЕПОДАМ", { size: 26, bold: true });
-        const wsLabel2 = state.ws === "1" ? "Весеннее" : "Осеннее";
-        drawText(`Группа ${state.id_group || "?"} · ${wsLabel2} полугодие · ${entries.length} ${plural(entries.length, "студент", "студента", "студентов")}`,
-            { size: 15, color: "#555555" });
-        spacer(4);
-        rule();
-        spacer(6);
-        const teacherRows = Array.from(teacherAgg.entries())
-            .sort((a, b) => (b[1].cards - a[1].cards) || a[0].localeCompare(b[0], "ru"));
-        for (const [t, a] of teacherRows) {
-            drawText(`${t} — ${a.logins.size} студ. · ${a.cards} ${plural(a.cards, "запись", "записи", "записей")}${a.dop ? ` · допусков: ${a.dop}` : ""}`,
-                { size: 14 });
-        }
-    }
 
     // колонтитул после сборки — знаем общее число страниц
     pages.forEach((p, idx) => {
