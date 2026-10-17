@@ -1,5 +1,6 @@
-const BASE = "https://lms.kgma.kg/vm/api";
+const BASE = "https://avn.kgma.kg/vm/api";
 const FALLBACK_BASE = "https://ksma-bad-marks.vercel.app/api/proxy";
+const FALLBACK_BASE2 = "https://ksma-bad-marks-proxy.itismynickname9.workers.dev/api/proxy";
 
 
 const ID_YEAR = 26;
@@ -283,15 +284,28 @@ async function mainscript() {
 	} catch (e) {
 		// Если поймали нашу спец-ошибку или любой сетевой сбой
 		if (e.message === "LMS_SSL_FAILURE" || e.message.includes("fetch")) {
-			logTerminal("Ошибка рукопожатия SSL!");
+			logTerminal("Ошибка прямого соединения с LMS!");
 			logTerminal("Перенаправление трафика на защищенный прокси-сервер...");
-			logTerminal("Соединение с Vercel установлено успешно!");
-			logTerminal("Ожидание данных от прокси-сервера...");
-			try {
-				const res = await fetch(`${FALLBACK_BASE}/run?login=${login}&id_ws=${id_ws}`);
-				if (!res.ok) throw new Error("Не удалось установить защищенное соединение.");
 
-				const json = await res.json();
+			// Два прокси по очереди: Vercel-функция, затем Cloudflare Worker
+			let json = null;
+			for (const base of [FALLBACK_BASE, FALLBACK_BASE2]) {
+				try {
+					logTerminal(`Прокси ${new URL(base).host}: соединение...`);
+					const res = await fetch(`${base}/run?login=${login}&id_ws=${id_ws}`);
+					if (!res.ok) throw new Error(`HTTP ${res.status}`);
+					json = await res.json();
+					if (!json || !Array.isArray(json.data)) throw new Error("bad proxy payload");
+					logTerminal("Соединение установлено, данные получены!");
+					break;
+				} catch (err) {
+					logTerminal(`Прокси ${new URL(base).host} недоступен (${err.message})`);
+				}
+			}
+			if (!json) {
+				throw new Error("Все прокси недоступны");
+			}
+			try {
 				const id_groupFallback = json.id_group || "";
 
 				json.data.forEach(item => {

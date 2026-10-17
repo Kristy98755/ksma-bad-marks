@@ -8,7 +8,7 @@ export default async function handler(req, res) {
     const path = urlParts.join("/");
 
     // Формируем полный URL на LMS
-    const baseUrl = new URL("https://lms.kgma.kg/vm/api/");
+    const baseUrl = new URL("https://avn.kgma.kg/vm/api/");
     const targetUrl = new URL(path, baseUrl);
 
     // Если есть query параметры — добавляем их
